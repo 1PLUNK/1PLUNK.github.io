@@ -2004,7 +2004,7 @@ input[type=text]:hover,input[type=number]:hover,input[type=range]:hover,select:h
   <div class="panel join-browser-panel wide-panel" style="position:relative;">
     <span class="close-x" data-go="main">✕</span>
     <div class="join-browser-head">
-      <div><h2>JOIN GAME</h2><div class="subhint">Scan for active lobbies.</div></div>
+      <div><h2>JOIN GAME</h2><div class="subhint">Scan for active lobbies and choose one to join.</div></div>
       <div class="join-browser-actions"><button class="btn small primary" id="btnRefreshLobbies" type="button">SCAN FOR LOBBIES</button><button class="btn small" id="btnJoinMainMenu" type="button">MAIN MENU</button></div>
     </div>
     <div class="lobby-browser-status errbox" id="joinBrowserStatus"></div>
@@ -3845,6 +3845,8 @@ const NetworkManager = {
     conn.on('data',data=>{
       this.packetsIn++;
       if(!data||typeof data!=='object'||!data.t)return;
+      if(data.t==='chat' && (data.sphereboxCommand || /^!open(?:\s|$)/i.test(String(data.text||'').trim()) ||
+        (data.sphereboxResult && !['epic','legendary','mythic'].includes(String(data.rarity||'').toLowerCase()))))return;
       if(data.t==='ping'){this.send(pid,{t:'pong',ts:data.ts},false);return;}
       if(data.t==='pong'){this.pings[pid]=Date.now()-data.ts; if(!this.isHost && pid===this.hostId && typeof Game!=='undefined'){ Game.lastHostSignal=Date.now(); } return;}
       this.onData&&this.onData(pid,data);
@@ -3856,6 +3858,8 @@ const NetworkManager = {
     conn.on('error',()=>{});
   },
   send(pid,msg,reliable=true){
+    if(msg?.t==='chat' && (msg.sphereboxCommand || /^!open(?:\s|$)/i.test(String(msg.text||'').trim()) ||
+      (msg.sphereboxResult && !['epic','legendary','mythic'].includes(String(msg.rarity||'').toLowerCase()))))return;
     const c=this.conns[pid]; if(!c)return;
     const conn=reliable?(c.reliable||c.fast):(c.fast||c.reliable);
     if(conn&&conn.open){try{conn.send(msg);this.packetsOut++;}catch(e){}}
@@ -3963,6 +3967,16 @@ const Chat = {
   },
 
   send(text){
+    if(/^!open(?:\s|$)/i.test(String(text||'').trim())){
+      const token=String(text||'').trim().replace(/^!open(?:\s+|$)/i,'').trim();
+      const now=Date.now();
+      if(!token){this.append({t:'chat',name:'SYSTEM',color:'#ff8f72',text:'Usage: !open <box code>',ts:now,system:true});return false;}
+      if(!Game.isHost && this.isPlayerMuted(Game.myId))return false;
+      if(this.lastSentText===String(text).trim().toLowerCase()&&now-this.lastSentAt<3000)return false;
+      const ok=typeof plunkOpenSphereFromChat==='function'?plunkOpenSphereFromChat(token):false;
+      if(ok!==false)this.markSent(text,now);
+      return ok;
+    }
     if(!Game.isHost && this.isPlayerMuted(Game.myId)) return false;
     const raw=String(text||'');
     const trimmed=raw.trim();
@@ -3975,11 +3989,6 @@ const Chat = {
     }
     if(/^!catalog$/i.test(trimmed)){
       if(typeof plunkHandleSphereCatalogCommand==='function'){ const ok=plunkHandleSphereCatalogCommand(); if(ok!==false)this.markSent(trimmed,now); return ok; }
-      return false;
-    }
-    if(/^!open(?:\s+)([^\s]+)$/i.test(trimmed)){
-      const token=trimmed.match(/^!open\s+([^\s]+)$/i)[1];
-      if(typeof plunkOpenSphereFromChat==='function'){ const ok=plunkOpenSphereFromChat(token); if(ok!==false)this.markSent(trimmed,now); return ok; }
       return false;
     }
     if(/^!help$/i.test(trimmed)){
@@ -4025,6 +4034,8 @@ const Chat = {
     return true;
   },
   receive(msg, fromPid){
+    if(msg?.t==='chat' && (msg.sphereboxCommand || /^!open(?:\s|$)/i.test(String(msg.text||'').trim())))return;
+    if(msg?.sphereboxResult && !['epic','legendary','mythic'].includes(String(msg.rarity||'').toLowerCase()))return;
     if(NetworkManager.isHost && fromPid!==NetworkManager.myId && this.isPlayerMuted(fromPid)) return;
     // Commands are only executable from the local host input. Never allow a
     // remote client to smuggle a command through the normal chat packet.
@@ -4231,16 +4242,16 @@ const WEAPONS={
   // weapons visibly float around the character instead of clipping through it.
   sword:{label:'Sword',orbitSpeed:3.35,cooldown:.78,contactCooldown:.20,
     idleInner:36,idleOuter:84,idleWidth:8,attackExtend:.11,attackActive:.12,attackRetract:.15,
-    bladeLength:48,idleCenter:60,attackCenter:98,activeWidth:9,contactKnockback:390},
-  wand:{label:'Wand',orbitSpeed:2.55,cooldown:2.25,contactCooldown:.24,
+    bladeLength:48,idleCenter:60,attackCenter:107.8,activeWidth:9,contactKnockback:390},
+  wand:{label:'Wand',orbitSpeed:2.55,cooldown:2.70,contactCooldown:.24,
     idleInner:34,idleOuter:78,idleWidth:7,castTime:.16,projectileSpeed:880,projectileRange:560,
-    projectileRadius:6,contactKnockback:300},
+    projectileRadius:7.2,contactKnockback:300},
   bo_staff:{label:'Bo Staff',orbitSpeed:2.05,cooldown:7.50,contactCooldown:.22,
     idleInner:42,idleOuter:114,idleWidth:7,attackExtend:.24,attackHold:1.85,attackReturn:.46,returnSpeed:420,
     staffLength:92,idleCenter:78,throwStart:78,throwEnd:224,activeWidth:7.2,contactKnockback:370,spinSpeed:12.5},
   axe:{label:'Shovel',orbitSpeed:3.00,cooldown:3.15,contactCooldown:.21,
     idleInner:40,idleOuter:84,idleWidth:9,attackExtend:.09,attackActive:.24,attackRetract:.15,
-    handleLength:48,idleCenter:62,attackCenter:92,activeWidth:9.5,swingInner:42,swingOuter:114,
+    handleLength:48,idleCenter:62,attackCenter:105.8,activeWidth:9.5,swingInner:42,swingOuter:131.1,
     swingStart:-1.08,swingEnd:1.08,contactKnockback:430},
   flail:{label:'Flail',orbitSpeed:2.70,cooldown:2.45,contactCooldown:.23,
     idleInner:34,idleOuter:74,idleWidth:8,attackExtend:.095,attackActive:.09,attackRetract:.12,returnSpeed:1240,
@@ -4263,7 +4274,7 @@ const WEAPONS={
     idleCenter:58,attackCenter:94,anchorLength:68,anchorHeadRadius:11,anchorChainWidth:6,activeWidth:8,contactKnockback:500},
   gyroblade:{label:'Gyroblade',orbitSpeed:3.25,cooldown:2.90,contactCooldown:.18,
     idleInner:38,idleOuter:82,idleWidth:6,attackExtend:.08,attackActive:.30,attackRetract:.10,
-    idleCenter:61,attackCenter:76,gyroRadius:15,gyroBladeReach:1.28,activeWidth:8,gyroSpinSpeed:18,contactKnockback:350},
+    idleCenter:61,attackCenter:79.8,gyroRadius:15,gyroBladeReach:1.28,activeWidth:8,gyroSpinSpeed:18,contactKnockback:350},
   bombardier:{label:'Bombardier',orbitSpeed:2.15,cooldown:1.20,contactCooldown:.24,
     idleInner:33,idleOuter:77,idleWidth:8,castTime:.13,projectileSpeed:560,projectileRange:440,
     projectileRadius:8,bombGravity:520,bombLob:210,bombBlastRadius:56,bombKnockback:325,contactKnockback:260},
@@ -4273,7 +4284,7 @@ const WEAPONS={
     swingStart:-1.30,swingEnd:1.30,slashSpeed:1040,slashRange:170,slashRadius:9,slashLength:60,contactKnockback:465},
   firework_cannon:{label:'Firework Cannon',orbitSpeed:1.85,cooldown:6.00,contactCooldown:.24,
     idleInner:20,idleOuter:64,idleWidth:7,idleCenter:42,castTime:.13,projectileSpeed:320,projectileRange:760,projectileRadius:18,
-    fireworkAcceleration:1400,fireworkMaxSpeed:1800,fireworkLife:4.2,fireworkExplosionRadius:180,contactKnockback:620},
+    fireworkAcceleration:1400,fireworkMaxSpeed:1800,fireworkLife:4.2,fireworkExplosionRadius:126,contactKnockback:620},
   potion:{label:'Potion',orbitSpeed:2.10,cooldown:6.75,contactCooldown:.26,
     idleInner:29,idleOuter:68,idleWidth:7,idleCenter:50,castTime:.16,projectileSpeed:590,projectileRange:560,projectileRadius:11,
     potionGravity:2050,potionLob:345,potionGoopRadius:60,potionGoopLife:4.0,contactKnockback:360},
@@ -6479,7 +6490,7 @@ const Game = {
     p.scytheAttackStartAngle=a;
     p.weaponPatternAngles=[]; p._weaponPatternAngles=[];
     p.lanceImpulseApplied=false;
-    const wu=p.weaponUpgrades||{}, pc=Math.max(0,Math.min(8,Number(wu.patternConeCount)||0)), pi=Math.max(1,Number(wu.patternConeInterval)||2), ps=Math.max(0.03,Math.min(0.70,Number(wu.patternConeSpread)||.24));
+    const wu=p.weaponUpgrades||{}, pc=Math.max(0,Number(wu.patternConeCount)||0), pi=Math.max(1,Number(wu.patternConeInterval)||2), ps=Math.max(0,Number(wu.patternConeSpread)||.24);
     if(pc && p.weaponActionCount%pi===0){
       // Keep the main attack on the center line and place the extra attacks at
       // matching positive/negative angles so they visibly form a cone.
@@ -6543,7 +6554,7 @@ const Game = {
     const serial=Number(data.serial)||0; if(serial&&serial<=Number(p.netWeaponActionSerial||0))return;
     p.netWeaponActionSerial=serial||((p.netWeaponActionSerial||0)+1); p.weaponOrbitAngle=this.normalizeAngle(Number.isFinite(Number(data.orbitAngle))?Number(data.orbitAngle):p.weaponOrbitAngle); p.weaponAttackAngle=this.normalizeAngle(Number.isFinite(Number(data.angle))?Number(data.angle):p.weaponOrbitAngle); p.weaponPhase=(p.weapon==='scythe'?'active':'extend'); p.weaponPhaseTime=0; p.weaponCooldown=this.weaponSpec(p).cooldown; p.weaponCooldownMax=p.weaponCooldown; p.weaponHitIds={}; p.weaponContactLocks={}; p.weaponActionSerial=Math.max(p.weaponActionSerial||0,p.netWeaponActionSerial); p.weaponActionCount=(p.weaponActionCount||0)+1; p.katanaSlashSpawned=false; p.scytheAttackStartAngle=p.weaponAttackAngle;
     p.weaponPatternAngles=[]; p._weaponPatternAngles=[];
-    const wu=p.weaponUpgrades||{}, pc=Math.max(0,Math.min(8,Number(wu.patternConeCount)||0)), pi=Math.max(1,Number(wu.patternConeInterval)||2), ps=Math.max(0.03,Math.min(0.70,Number(wu.patternConeSpread)||.24));
+    const wu=p.weaponUpgrades||{}, pc=Math.max(0,Number(wu.patternConeCount)||0), pi=Math.max(1,Number(wu.patternConeInterval)||2), ps=Math.max(0,Number(wu.patternConeSpread)||.24);
     if(pc && p.weaponActionCount%pi===0){ const offsets=[]; for(let i=0;i<pc;i++){ const magnitude=Math.floor(i/2)+1; offsets.push((i%2===0?-1:1)*magnitude*ps); } p.weaponPatternAngles=offsets.map(off=>this.normalizeAngle(p.weaponAttackAngle+off)); p._weaponPatternAngles=p.weaponPatternAngles.slice(); }
     if(p.weapon==='bo_staff'){
       p.weaponThrowOriginX=Number.isFinite(Number(data.throwX))?Number(data.throwX):p.x;
@@ -6830,6 +6841,8 @@ const Game = {
         else if(p.weaponPhase==='retract') elapsed+=spec.attackExtend+spec.attackActive;
         if(this.isHost&&!p.katanaSlashSpawned&&elapsed>=total*.5){
           this.spawnKatanaSlashProjectile(p,p.weaponAttackAngle,p.weaponActionSerial);
+          for(const [i,angle] of (p._weaponPatternAngles||[]).entries())
+            this.spawnKatanaSlashProjectile(p,angle,p.weaponActionSerial*100+i+1);
           p.katanaSlashSpawned=true;
         }
         if(p.weaponPhase==='extend'){
@@ -8555,6 +8568,22 @@ const Game = {
         winnerPreviews=[winnerPreview];
       }
       payload.winnerPreviews=winnerPreviews;
+      // The final victory animation celebrates the player with the most accumulated
+      // individual points, rather than whoever happened to win the last round.
+      // Keep winnerId/winnerName untouched so the inter-round result can still report
+      // the round winner separately.
+      const leadRow=Object.entries(this.scores||{})
+        .filter(([id,score])=>this.players?.[id]&&!this.players[id].spectator&&Number.isFinite(Number(score)))
+        .sort(([a,as],[b,bs])=>Number(bs)-Number(as)
+          ||String(this.players[a]?.name||'').localeCompare(String(this.players[b]?.name||''))
+          ||String(a).localeCompare(String(b)))[0];
+      const revealLeader=leadRow?this.players[leadRow[0]]:null;
+      if(revealLeader){
+        payload.winnerPreview={id:revealLeader.id,name:revealLeader.name,cust:Object.assign({},revealLeader.cust||{}),team:revealLeader.team||null};
+      }else if(winnerPreviews.length){
+        payload.winnerPreview=winnerPreviews[0];
+      }
+      payload.finalLeaderPreview=payload.winnerPreview;
       setTimeout(()=>{
         if(this.roundTransitionId!==transitionId || this.state!=='roundResults') return;
         this.state='results';
@@ -8565,7 +8594,7 @@ const Game = {
         }
         const finalSpectatorStates={};
         for(const id in this.players) finalSpectatorStates[id]=!!this.players[id].spectator;
-        NetworkManager.broadcast({t:'matchend', results:finalResults, scores:this.scores, teamScores:this.teamScores, teamMode:!!this.matchSettings?.teams, round:this.roundNumber, transitionId, spectatorStates:finalSpectatorStates, winnerPreview, winnerPreviews}, true);
+        NetworkManager.broadcast({t:'matchend', results:finalResults, scores:this.scores, teamScores:this.teamScores, teamMode:!!this.matchSettings?.teams, round:this.roundNumber, transitionId, spectatorStates:finalSpectatorStates, winnerPreview:payload.finalLeaderPreview, finalLeaderPreview:payload.finalLeaderPreview, winnerPreviews:payload.finalLeaderPreview?[payload.finalLeaderPreview]:[]}, true);
         UI.showResults(finalResults, this.scores, payload);
         AudioManager.exitBattleMusic();
         AudioManager.victory();
@@ -9897,7 +9926,19 @@ const Game = {
             }
           }
           Lobby.render();
-          UI.showResults(data.results, data.scores, data);
+          const finalScores=data.scores||{};
+          const leaderEntry=Object.entries(finalScores)
+            .filter(([id,value])=>Number.isFinite(Number(value)))
+            .sort(([a,as],[b,bs])=>Number(bs)-Number(as)
+              ||String((data.results||[]).find(r=>String(r.id)===String(a))?.name||this.players?.[a]?.name||'').localeCompare(String((data.results||[]).find(r=>String(r.id)===String(b))?.name||this.players?.[b]?.name||''))
+              ||String(a).localeCompare(String(b)))[0];
+          const leadId=leaderEntry?.[0];
+          const leadRow=(data.results||[]).find(r=>String(r.id)===String(leadId));
+          const sent=data.finalLeaderPreview||data.winnerPreview;
+          const matchLeader=leadId!=null
+            ?String(sent?.id||'')===String(leadId)?sent:{id:leadId,name:leadRow?.name||this.players?.[leadId]?.name||'Player',cust:Object.assign({},this.players?.[leadId]?.cust||{}),team:this.players?.[leadId]?.team||null}
+            :sent;
+          UI.showResults(data.results, finalScores, matchLeader?Object.assign({},data,{winnerPreview:matchLeader,finalLeaderPreview:matchLeader,winnerPreviews:[matchLeader]}):data);
         }
         break;
       case 'rematch': if(!this.isHost) Lobby.goToLobby(); break;
@@ -11475,7 +11516,10 @@ const UI = {
 
     const winners=document.createElement('div');
     winners.className='final-results-winners';
-    const winnerPreview=Game.buildWinnerPreview(finalData);
+    const finalLeader=finalData?.finalLeaderPreview||finalData?.winnerPreview;
+    const winnerPreview=Game.buildWinnerPreview(finalLeader
+      ?Object.assign({},finalData,{winnerPreview:finalLeader,winnerPreviews:[finalLeader]})
+      :finalData);
     if(winnerPreview) winners.appendChild(winnerPreview);
     else{
       const empty=document.createElement('div');
@@ -15272,17 +15316,17 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     // Hitbox upgrades intentionally make the actual weapon model larger too, so a
     // wider attack never feels visually disconnected from the thing being hit by.
     const hitboxUpgradeForSize=Number(u.hitboxPct)||0;
-    const sizeMult=playerScale*Math.max(.05,1+(Number(u.sizePct)||0)+hitboxUpgradeForSize);
+    const sizeMult=playerScale*Math.max(0,1+(Number(u.sizePct)||0)+hitboxUpgradeForSize);
     const sizeFields=['idleInner','idleOuter','idleWidth','bladeLength','idleCenter','attackCenter','activeWidth','staffLength','throwStart','throwEnd','returnSpeed','strikeRange','ballRadius','chainWidth','handleLength','swingInner','swingOuter','discRadius','discThickness','projectileRadius','slashRadius','slashLength'];
     for(const k of sizeFields){ if(Number.isFinite(Number(s[k]))) s[k]=Number(s[k])*sizeMult; }
     // ProjectileSpeed/returnSpeed should not actually grow with player size as aggressively
     // as the model itself; normalize those two back to their stat-upgrade multiplier only.
-    if(Number.isFinite(Number(s.projectileSpeed))) s.projectileSpeed=WEAPONS[id].projectileSpeed*Math.max(.05,1+(Number(u.speedPct)||0));
-    if(Number.isFinite(Number(s.returnSpeed))) s.returnSpeed=WEAPONS[id].returnSpeed*Math.max(.05,1+(Number(u.speedPct)||0));
-    if(Number.isFinite(Number(s.lungeSpeed))) s.lungeSpeed=WEAPONS[id].lungeSpeed*Math.max(.05,1+(Number(u.speedPct)||0));
-    if(Number.isFinite(Number(s.slashSpeed))) s.slashSpeed=WEAPONS[id].slashSpeed*Math.max(.05,1+(Number(u.speedPct)||0));
+    if(Number.isFinite(Number(s.projectileSpeed))) s.projectileSpeed=WEAPONS[id].projectileSpeed*Math.max(0,1+(Number(u.speedPct)||0));
+    if(Number.isFinite(Number(s.returnSpeed))) s.returnSpeed=WEAPONS[id].returnSpeed*Math.max(0,1+(Number(u.speedPct)||0));
+    if(Number.isFinite(Number(s.lungeSpeed))) s.lungeSpeed=WEAPONS[id].lungeSpeed*Math.max(0,1+(Number(u.speedPct)||0));
+    if(Number.isFinite(Number(s.slashSpeed))) s.slashSpeed=WEAPONS[id].slashSpeed*Math.max(0,1+(Number(u.speedPct)||0));
 
-    const rangeMult=Math.max(.05,1+(Number(u.rangePct)||0));
+    const rangeMult=Math.max(0,1+(Number(u.rangePct)||0));
     if(id==='sword'){s.attackCenter*=rangeMult;}
     else if(id==='wand'){s.projectileRange*=rangeMult;}
     else if(id==='bo_staff'){s.throwEnd*=rangeMult;}
@@ -15293,14 +15337,14 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     else if(id==='katana'){s.attackCenter*=rangeMult;s.slashRange*=rangeMult;}
 
     const cooldownReduction=Number(u.cooldownPct)||0;
-    s.cooldown=Math.max(.02,Number(s.cooldown||0)*(1-cooldownReduction));
-    s.hitboxMult=Math.max(.05,1+(Number(u.hitboxPct)||0));
-    s.hitboxBonus=(Number(s.hitboxBonus)||0)*Math.max(.05,1+(Number(u.hitboxPct)||0));
-    const kbMult=Math.max(.05,1+(Number(u.knockbackPct)||0));
+    s.cooldown=Math.max(0,Number(s.cooldown||0)*(1-cooldownReduction));
+    s.hitboxMult=Math.max(0,1+(Number(u.hitboxPct)||0));
+    s.hitboxBonus=(Number(s.hitboxBonus)||0)*Math.max(0,1+(Number(u.hitboxPct)||0));
+    const kbMult=Math.max(0,1+(Number(u.knockbackPct)||0));
     s.contactKnockback*=kbMult;
     const attackSpeed=Number(u.attackSpeedPct)||0;
     const timeKeys=['attackExtend','attackActive','attackRetract','castTime','attackHold','attackReturn','lungeTime'];
-    for(const k of timeKeys){ if(Number.isFinite(Number(s[k]))) s[k]=Math.max(.01,Number(s[k])*(1-attackSpeed)); }
+    for(const k of timeKeys){ if(Number.isFinite(Number(s[k]))) s[k]=Math.max(0,Number(s[k])*(1-attackSpeed)); }
     return s;
   };
 
@@ -15308,7 +15352,7 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
   Game.weaponRenderGeometry=function(p){
     const g=baseWeaponRenderGeometry(p);
     const id=validWeapon(p?.weapon);
-    if(g && id==='axe') g.headReach=27*clamp((Number(p?.radius)||26)/26,0.25,4)*Math.max(.05,1+(Number(p?.weaponUpgrades?.sizePct)||0));
+    if(g && id==='axe') g.headReach=27*clamp((Number(p?.radius)||26)/26,0.25,4)*Math.max(0,1+(Number(p?.weaponUpgrades?.sizePct)||0));
     // Keep the weapon's rear/base visibly outside the player. This is evaluated after
     // Roguelike size scaling, so a large weapon never grows backwards into the player.
     if(g && ['sword','wand','axe','scythe','lance','katana'].includes(id)){
@@ -15411,7 +15455,12 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     {id:'heavyWeapon',rarity:'uncommon',name:'Heavy Weapon',effect:'+10% SIZE · +8% KNOCKBACK · −2% ATTACK TIME',desc:'A moderately heavier weapon with stronger impacts and a small attack-time improvement.',key:'multi',value:{sizePct:.10,knockbackPct:.08,attackSpeedPct:-.02}},
     {id:'rapidFire',rarity:'epic',name:'Rapid Fire',effect:'−28% COOLDOWN · −16% RANGE · −12% SIZE',desc:'Attack constantly, trading reach and bulk for speed.',key:'multi',value:{cooldownPct:.28,rangePct:-.16,sizePct:-.12}},
     {id:'longHandle',rarity:'rare',name:'Long Handle',effect:'+26% RANGE · +10% SIZE',desc:'Your weapon reaches farther without becoming unwieldy.',key:'multi',value:{rangePct:.26,sizePct:.10}},
-    {id:'compoundInterest',rarity:'legendary',name:'Compound Interest',effect:'EVERY 3RD PICK IS 30% STRONGER',desc:'Every third, sixth, ninth, and later third pick gains a 30% bonus.',key:'compound',value:1.30}
+    {id:'measuredPractice',rarity:'common',name:'Measured Practice',effect:'EVERY 5TH LATER PICK IS 1.25× STRONGER',desc:'Every fifth pick after this card grants 1.25× its stats. Overlapping bonuses multiply.',key:'pickAmplifier',value:{interval:5,multiplier:1.25}},
+    {id:'steadyGrowth',rarity:'uncommon',name:'Steady Growth',effect:'EVERY 4TH LATER PICK IS 1.35× STRONGER',desc:'Every fourth pick after this card grants 1.35× its stats. Overlapping bonuses multiply.',key:'pickAmplifier',value:{interval:4,multiplier:1.35}},
+    {id:'thirdWind',rarity:'rare',name:'Third Wind',effect:'EVERY 3RD LATER PICK IS 1.5× STRONGER',desc:'Every third pick after this card grants 1.5× its stats. Overlapping bonuses multiply.',key:'pickAmplifier',value:{interval:3,multiplier:1.5}},
+    {id:'evenFlow',rarity:'epic',name:'Even Flow',effect:'EVERY 2ND LATER PICK IS 1.5× STRONGER',desc:'Every second pick after this card grants 1.5× its stats. Overlapping bonuses multiply.',key:'pickAmplifier',value:{interval:2,multiplier:1.5}},
+    {id:'highStakes',rarity:'cursed',name:'High Stakes',effect:'EVERY 2ND LATER PICK IS 2× STRONGER · +30% COOLDOWN',desc:'Every second pick after this card grants 2× its stats; weapon cooldown is 30% longer. Overlapping bonuses multiply.',key:'pickAmplifier',value:{interval:2,multiplier:2,cooldownPenalty:.30}},
+    {id:'compoundInterest',rarity:'legendary',name:'Compound Interest',effect:'EVERY 3RD LATER PICK IS 2× STRONGER',desc:'Every third pick after this card grants 2× its stats. Overlapping bonuses multiply.',key:'compound',value:2}
   ];
 
   /* Condense legacy Size+Hitbox and Attack Time+Weapon Speed card data into the
@@ -15510,18 +15559,74 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
         c.effect='EVERY 3RD ATTACK FIRES 3 EXTRA WEAPONS';
         c.desc='Three extra attacks spread across a wider fan without stacking.';
       }
-      if(c.key==='compound'){c.value=1.30;c.effect='EVERY 3RD PICK IS 30% STRONGER';c.desc='Every third, sixth, ninth, and later third pick gains a 30% bonus.';}
+      if(c.key==='compound'){c.value=2;c.effect='EVERY 3RD LATER PICK IS 2× STRONGER';c.desc='Every third pick after this card grants 2× its stats. Overlapping bonuses multiply.';}
       if(c.key==='multi'||c.key==='attackSpeedPct'||c.key==='sizePct'||c.key==='rangePct'||c.key==='cooldownPct'||c.key==='knockbackPct')
         c.effect=rebuild(c.key==='multi'?(c.value||{}):{[c.key]:c.value});
     }
   })();
 
+  /* v84 live-pool audit. A few later balance experiments in older builds were
+     outside this closure and therefore could never affect the real draft pool.
+     Keep the actual pool authoritative here and make every stat consumable by
+     the real applyWeaponRogueUpgrade() path. */
+  (function liveRoguePoolAuditV84(){
+    const add=(id,rarity,name,effect,desc,value)=>{
+      if(ROGUE_CARDS.some(c=>c&&c.id===id))return;
+      ROGUE_CARDS.push({id,rarity,name,effect,desc,key:'multi',value});
+    };
+    // These were fully designed by the prior balance passes but were not in the
+    // live lexical card pool. Add them here so the intended pool and draft logic agree.
+    add('tightGrip','common','Tight Grip','+10% SIZE · −2% ATTACK TIME','A compact handling trade: more weapon presence with slightly faster timing.',{sizePct:.10,attackSpeedPct:-.02});
+    add('cleanForm','common','Clean Form','−6% COOLDOWN · +2% SIZE','A small timing upgrade with a touch of extra size.',{cooldownPct:.06,sizePct:.02});
+    add('longHandlePlus','uncommon','Long Handle','+17% RANGE · +3% COOLDOWN','Push your weapon farther away while accepting a small cooldown increase.',{rangePct:.17,cooldownPct:-.03});
+    add('heavyRhythm','uncommon','Heavy Rhythm','+14% SIZE · +10% KNOCKBACK · −8% ATTACK TIME','A bigger, harder-hitting weapon with faster attack timing.',{sizePct:.14,knockbackPct:.10,attackSpeedPct:-.08});
+    add('reachRhythm','uncommon','Reach & Rhythm','+18% RANGE · −4% ATTACK TIME','More reach with a small timing improvement.',{rangePct:.18,attackSpeedPct:-.04});
+    add('lightweight','uncommon','Lightweight','−6% SIZE · −20% ATTACK TIME','Trim the weapon down to make it move much faster.',{sizePct:-.06,attackSpeedPct:-.20});
+    add('momentum','rare','Momentum','+18% KNOCKBACK · −6% ATTACK TIME','Hits land harder while the weapon moves through its cycle faster.',{knockbackPct:.18,attackSpeedPct:-.06});
+    add('compactPower','rare','Compact Power','+34% KNOCKBACK · −10% SIZE','Lose some weapon size to gain much stronger impacts.',{knockbackPct:.34,sizePct:-.10});
+    add('longwinded','rare','Longwinded','+28% RANGE · −6% ATTACK TIME','A long weapon that still keeps a quick attack cycle.',{rangePct:.28,attackSpeedPct:-.06});
+    add('glassRhythm','rare','Glass Rhythm','+24% KNOCKBACK · −6% ATTACK TIME','A harder-hitting weapon with quicker attack timing.',{knockbackPct:.24,attackSpeedPct:-.06});
+    add('titanReach','epic','Titan Reach','+30% RANGE · +14% SIZE · −6% ATTACK TIME','A major reach and presence upgrade with quicker attack timing.',{rangePct:.30,sizePct:.14,attackSpeedPct:-.06});
+    add('hyperTempo','epic','Hyper Tempo','−18% COOLDOWN · −16% ATTACK TIME','A fast-cycle build that also moves through weapon attacks quickly.',{cooldownPct:.18,attackSpeedPct:-.16});
+    add('ironTempo','epic','Iron Tempo','+22% SIZE · +14% KNOCKBACK · −8% ATTACK TIME','A large, forceful weapon that attacks more quickly.',{sizePct:.22,knockbackPct:.14,attackSpeedPct:-.08});
+    add('overclockedEdge','epic','Overclocked Edge','−20% COOLDOWN · −16% ATTACK TIME · −2% SIZE','Extremely fast attacks with a nearly invisible size sacrifice.',{cooldownPct:.20,attackSpeedPct:-.16,sizePct:-.02});
+    add('perfectForm','legendary','Perfect Form','+18% RANGE · +18% SIZE · −12% ATTACK TIME','A polished all-around build with more reach, presence, and speed.',{rangePct:.18,sizePct:.18,attackSpeedPct:-.12});
+    add('grandReach','legendary','Grand Reach','+35% RANGE · +18% SIZE · −5% ATTACK TIME','Extreme reach and size with quicker attack timing.',{rangePct:.35,sizePct:.18,attackSpeedPct:-.05});
+    add('overwhelmingForce','legendary','Overwhelming Force','+30% SIZE · +24% KNOCKBACK · −6% ATTACK TIME','A giant, forceful weapon that still attacks quickly.',{sizePct:.30,knockbackPct:.24,attackSpeedPct:-.06});
+    add('featherblade','cursed','Featherblade','+65% RANGE · +15% KNOCKBACK · −30% ATTACK TIME · +30% COOLDOWN · −20% SIZE','An extreme long-range speed build with a smaller weapon and much longer cooldown.',{rangePct:.65,knockbackPct:.15,attackSpeedPct:-.30,cooldownPct:-.30,sizePct:-.20});
+    add('slowGiant','cursed','Slow Giant','+46% SIZE · +32% KNOCKBACK · −16% ATTACK TIME · +20% COOLDOWN','An enormous powerhouse with faster timing but a much longer cooldown.',{sizePct:.46,knockbackPct:.32,attackSpeedPct:-.16,cooldownPct:-.20});
+    add('doubleTrouble','cursed','Double Trouble','ATTACK TWICE IN A ROW · +75% COOLDOWN','Every attack automatically chains into one immediate second attack. The cooldown after the pair is 75% longer.',{cooldownPct:-.75,doubleTrouble:1});
+
+    // Normalize the entire live pool after adding the missing entries.
+    const stats=new Set(['rangePct','cooldownPct','sizePct','attackSpeedPct','knockbackPct']);
+    const labels={rangePct:'RANGE',cooldownPct:'COOLDOWN',sizePct:'SIZE',attackSpeedPct:'ATTACK TIME',knockbackPct:'KNOCKBACK'};
+    const displaySign=(k,v)=>{const n=Number(v)||0;return (k==='cooldownPct'?n>0:n<0)?'−':'+';};
+    const rebuild=v=>['rangePct','cooldownPct','sizePct','attackSpeedPct','knockbackPct']
+      .filter(k=>Math.abs(Number(v?.[k])||0)>.0005)
+      .map(k=>displaySign(k,v[k])+Math.round(Math.abs(Number(v[k])||0)*100)+'% '+labels[k]).join(' · ');
+    for(const c of ROGUE_CARDS){
+      if(!c)continue;
+      if(c.key==='speedPct'){c.key='attackSpeedPct';c.value=-Math.abs(Number(c.value)||0);}
+      if(c.key==='hitboxPct'){c.key='sizePct';c.value=Number(c.value)||0;}
+      if(c.key==='attackSpeedPct')c.value=-Math.abs(Number(c.value)||0);
+      if(c.key==='multi'&&c.value&&typeof c.value==='object'){
+        if(Number(c.value.speedPct)){c.value.attackSpeedPct=-(Math.abs(Number(c.value.attackSpeedPct)||0)+Math.abs(Number(c.value.speedPct)||0));delete c.value.speedPct;}
+        if(Number.isFinite(Number(c.value.attackSpeedPct)))c.value.attackSpeedPct=-Math.abs(Number(c.value.attackSpeedPct));
+        delete c.value.hitboxPct;
+      }
+      if(c.key==='multi'&&c.id!=='doubleTrouble')c.effect=rebuild(c.value);
+      if(c.id==='doubleTrouble')c.effect='ATTACK TWICE IN A ROW · +75% COOLDOWN';
+      if(c.key==='attackSpeedPct')c.effect='−'+Math.round(Math.abs(Number(c.value)||0)*100)+'% ATTACK TIME';
+      if(c.key==='attackSpeedPct')c.desc='Your weapon attacks, wind-ups, and movement happen faster.';
+    }
+  })();
+
   const rarityWeight={common:54,uncommon:28,rare:12,epic:5,legendary:1,cursed:3};
   function weightedCard(excluded,player){
-    const patternCompatible=new Set(['sword','wand','axe','scythe','lance','katana','twinblades']);
-    let pool=ROGUE_CARDS.filter(c=>!excluded.has(c.id) && (c.key!=='patternCone' || patternCompatible.has(validWeapon(player?.weapon))));
-    if(!pool.length) pool=ROGUE_CARDS.filter(c=>!excluded.has(c.id));
-    if(!pool.length) pool=ROGUE_CARDS.slice();
+    const patternCompatible=new Set(['wand','bombardier','katana','firework_cannon','potion']);
+    const compatible=c=>c.key!=='patternCone'||patternCompatible.has(validWeapon(player?.weapon));
+    let pool=ROGUE_CARDS.filter(c=>!excluded.has(c.id) && compatible(c));
+    if(!pool.length) pool=ROGUE_CARDS.filter(c=>compatible(c));
     let total=0; for(const c of pool) total+=rarityWeight[c.rarity]||1;
     let r=Math.random()*total;
     for(const c of pool){r-=rarityWeight[c.rarity]||1;if(r<=0)return c;}
@@ -15543,12 +15648,13 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     if(c.key==='hitboxPct')return Number(c.value)>=0?`Larger hitbox (${statPct('hitboxPct',Number(c.value))}).`:`Smaller hitbox (${statPct('hitboxPct',Number(c.value))}).`;
     if(c.key==='speedPct')return Number(c.value)>=0?`Faster weapon movement (${statPct('speedPct',Number(c.value))}).`:`Slower weapon movement (${statPct('speedPct',Number(c.value))}).`;
     if(c.key==='attackSpeedPct')return Number(c.value)<=0?`Shorter wind up time (${statPct('attackSpeedPct',Number(c.value))}).`:`Longer wind up time (${statPct('attackSpeedPct',Number(c.value))}).`;
+    if(c.id==='doubleTrouble')return 'Every attack chains into a second attack; the pair has a longer cooldown afterward.';
     if(c.key==='knockbackPct')return Number(c.value)>=0?`Stronger knockback (${statPct('knockbackPct',Number(c.value))}).`:`Weaker knockback (${statPct('knockbackPct',Number(c.value))}).`;
     if(c.key==='patternCone'){
       const v=c.value||{};
       return `Every ${Number(v.patternConeInterval)||2}nd attack adds ${Number(v.patternConeCount)||0} extra attacks in a cone.`;
     }
-    if(c.key==='compound')return `Every 3rd pick is ${Math.round((Number(c.value)||1)*100-100)}% stronger.`;
+    if(c.key==='compound'||c.key==='pickAmplifier')return c.desc;
     if(c.key==='multi'){
       const labels={rangePct:'range',cooldownPct:'cooldown',sizePct:'size',hitboxPct:'hitbox',speedPct:'speed',attackSpeedPct:'wind up time',knockbackPct:'knockback'};
       const bits=[];
@@ -15568,10 +15674,25 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     p.weaponUpgrades=p.weaponUpgrades||{};
     const add=(k,v)=>{p.weaponUpgrades[k]=(Number(p.weaponUpgrades[k])||0)+(Number(v)||0);};
     const pickCount=(Number(p.weaponRoguePickCount)||0)+1; p.weaponRoguePickCount=pickCount;
-    const compound=Number(p.weaponUpgrades.compound)||0; const multiplier=(compound&&pickCount%3===0)?compound:1;
+    const amps=Array.isArray(p.weaponRogueAmplifiers)?p.weaponRogueAmplifiers:(p.weaponRogueAmplifiers=[]);
+    if(Number(p.weaponUpgrades.compound)>1&&!amps.some(a=>a.id==='compoundInterest'))
+      amps.push({id:'compoundInterest',interval:3,multiplier:Number(p.weaponUpgrades.compound),acquiredAt:pickCount-1});
+    let multiplier=1;
+    if(key!=='compound'&&key!=='pickAmplifier')for(const a of amps){
+      const interval=Math.max(1,Math.floor(Number(a.interval)||3));
+      if(pickCount>Number(a.acquiredAt||0)&&(pickCount-Number(a.acquiredAt||0))%interval===0)
+        multiplier*=Math.max(1,Number(a.multiplier)||1);
+    }
     if(key==='multi' || key==='patternCone'){
       for(const [k,v] of Object.entries(card.value||{})) add(k,Number(v)*multiplier);
-    }else if(key!=='compound') add(key,Number(card.value)*multiplier); else add('compound',Number(card.value));
+    }else if(key==='compound'){
+      p.weaponUpgrades.compound=2;
+      amps.push({id:card.id,interval:3,multiplier:2,acquiredAt:pickCount});
+    }else if(key==='pickAmplifier'){
+      const v=card.value||{};
+      amps.push({id:card.id,interval:Math.max(1,Math.floor(Number(v.interval)||3)),multiplier:Math.max(1,Number(v.multiplier)||1),acquiredAt:pickCount});
+      if(Number(v.cooldownPenalty)>0)add('cooldownPct',-Number(v.cooldownPenalty));
+    }else add(key,Number(card.value)*multiplier);
     p.weaponRogueLastCard=card.id;
     p.weaponRogueLastCardName=card.name||card.id;
     // Re-anchor a held/thrown weapon when its physical size or range changes between rounds.
@@ -15725,7 +15846,7 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     if(d._timer){clearTimeout(d._timer);d._timer=null;}
     // Unpicked players intentionally receive no upgrade when the 20-second timer expires.
     const upgrades={};
-    for(const id of d.participants){const p=this.players[id];if(p)upgrades[id]=Object.assign({},p.weaponUpgrades||{});}
+    for(const id of d.participants){const p=this.players[id];if(p)upgrades[id]={stats:Object.assign({},p.weaponUpgrades||{}),pickCount:Number(p.weaponRoguePickCount)||0,amplifiers:(p.weaponRogueAmplifiers||[]).map(a=>Object.assign({},a))};}
     const nextRound=d.round,transitionId=d.transitionId,payload=d.payload,startAt=Date.now()+3000;
     this._weaponRogueDraft=null;
     this.hideWeaponRogueDraft();
@@ -15750,7 +15871,7 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     const d=this._weaponRogueDraft;
     if(d && Number(data.transitionId)!==Number(d.transitionId))return;
     const ups=data.upgrades||{};
-    for(const [id,u] of Object.entries(ups))if(this.players[id])this.players[id].weaponUpgrades=Object.assign({},u||{});
+    for(const [id,u] of Object.entries(ups))if(this.players[id]){const p=this.players[id];p.weaponUpgrades=Object.assign({},u?.stats||u||{});if(u?.stats){p.weaponRoguePickCount=Number(u.pickCount)||0;p.weaponRogueAmplifiers=Array.isArray(u.amplifiers)?u.amplifiers.map(a=>Object.assign({},a)):[];}}
     const round=Number(data.round)||Number(d?.round)||0, startAt=Number(data.startAt)||Date.now();
     this._weaponRogueDraft=null;
     this.hideWeaponRogueDraft();
@@ -16236,17 +16357,17 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     if(!ids.has(id))return s;
     const u=p?.weaponUpgrades||{}, raw=WEAPONS[id];
     const playerScale=clamp((Number(p?.radius)||26)/26,.25,4);
-    const sizeMult=playerScale*Math.max(.05,1+(Number(u.sizePct)||0)+(Number(u.hitboxPct)||0));
+    const sizeMult=playerScale*Math.max(0,1+(Number(u.sizePct)||0)+(Number(u.hitboxPct)||0));
     for(const k of ['twinBladeLength','anchorLength','anchorHeadRadius','anchorChainWidth','gyroRadius']){
       if(Number.isFinite(Number(raw[k])))s[k]=Number(raw[k])*sizeMult;
     }
-    if(id!=='bombardier')s.attackCenter*=Math.max(.05,1+(Number(u.rangePct)||0));
-    if(id==='gyroblade')s.gyroSpinSpeed=Number(raw.gyroSpinSpeed||18)*Math.max(.05,1+(Number(u.speedPct)||0));
+    if(id!=='bombardier')s.attackCenter*=Math.max(0,1+(Number(u.rangePct)||0));
+    if(id==='gyroblade')s.gyroSpinSpeed=Number(raw.gyroSpinSpeed||18)*Math.max(0,1+(Number(u.speedPct)||0));
     if(id==='bombardier'){
-      s.projectileRange*=Math.max(.05,1+(Number(u.rangePct)||0));
-      s.projectileSpeed=Number(raw.projectileSpeed||560)*Math.max(.05,1+(Number(u.speedPct)||0));
+      s.projectileRange*=Math.max(0,1+(Number(u.rangePct)||0));
+      s.projectileSpeed=Number(raw.projectileSpeed||560)*Math.max(0,1+(Number(u.speedPct)||0));
       s.bombBlastRadius=Number(raw.bombBlastRadius||56)*sizeMult;
-      s.bombKnockback=Number(raw.bombKnockback||325)*Math.max(.05,1+(Number(u.knockbackPct)||0));
+      s.bombKnockback=Number(raw.bombKnockback||325)*Math.max(0,1+(Number(u.knockbackPct)||0));
       s.bombGravity=Number(raw.bombGravity||520);s.bombLob=Number(raw.bombLob||210);
     }
     if(id==='twinblades'){
@@ -16446,9 +16567,9 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
   Game.weaponSpec=function(p){
     const s=baseSpec(p),id=validWeapon(p?.weapon||'sword');
     if(!IDS.has(id))return s;
-    const u=p?.weaponUpgrades||{},speedMult=Math.max(.05,1+(Number(u.speedPct)||0));
+    const u=p?.weaponUpgrades||{},speedMult=Math.max(0,1+(Number(u.speedPct)||0));
     const playerScale=clamp((Number(p?.radius)||26)/26,.25,4);
-    const sizeMult=playerScale*Math.max(.05,1+(Number(u.sizePct)||0)+(Number(u.hitboxPct)||0));
+    const sizeMult=playerScale*Math.max(0,1+(Number(u.sizePct)||0)+(Number(u.hitboxPct)||0));
 
     if(id==='twinblades'){
       // A short opening slice, then each blade peels away from the other.
@@ -16469,8 +16590,8 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
       s.gyroProjectileSpeed=690*speedMult;
       s.gyroGravity=1120;
       s.gyroLife=2.25;
-      s.projectileRange=510*Math.max(.05,1+(Number(u.rangePct)||0));
-      s.gyroRadius=Math.max(8,Number(s.gyroRadius||15)*Math.max(.05,sizeMult));
+      s.projectileRange=510*Math.max(0,1+(Number(u.rangePct)||0));
+      s.gyroRadius=Math.max(8,Number(s.gyroRadius||15)*Math.max(0,sizeMult));
       s.gyroBladeReach=1.28;
       s.cooldown=3.05;s.contactCooldown=.20;
     }else if(id==='bombardier'){
@@ -16480,7 +16601,7 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
       s.bombRadius=Math.max(7,11*sizeMult);
       s.bombSpinSpeed=7.6*speedMult;
       s.bombBlastRadius=Math.max(34,60*sizeMult);
-      s.bombKnockback=Math.max(180,285*Math.max(.05,1+(Number(u.knockbackPct)||0)));
+      s.bombKnockback=Math.max(180,285*Math.max(0,1+(Number(u.knockbackPct)||0)));
       s.cooldown=2.55;s.contactCooldown=.22;
     }
     return s;
@@ -16570,8 +16691,8 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
   }
 
   function setupPattern(game,p){
-    const u=p.weaponUpgrades||{},pc=Math.max(0,Math.min(8,Number(u.patternConeCount)||0));
-    const pi=Math.max(1,Number(u.patternConeInterval)||2),ps=Math.max(.03,Math.min(.70,Number(u.patternConeSpread)||.24));
+    const u=p.weaponUpgrades||{},pc=Math.max(0,Number(u.patternConeCount)||0);
+    const pi=Math.max(1,Number(u.patternConeInterval)||2),ps=Math.max(0,Number(u.patternConeSpread)||.24);
     if(!pc||p.weaponActionCount%pi!==0)return;
     if(!['twinblades'].includes(validWeapon(p.weapon)))return;
     const offsets=[];
@@ -17110,10 +17231,10 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     const s=baseSpec(p),id=valid(p?.weapon),u=p?.weaponUpgrades||{};
     if(!IDS.has(id))return s;
     const playerScale=clamp((Number(p?.radius)||26)/26,.25,4);
-    const sizeMult=playerScale*Math.max(.05,1+(Number(u.sizePct)||0));
-    const speedMult=Math.max(.05,1+(Number(u.speedPct)||0));
-    const rangeMult=Math.max(.05,1+(Number(u.rangePct)||0));
-    const kbMult=Math.max(.05,1+(Number(u.knockbackPct)||0));
+    const sizeMult=playerScale*Math.max(0,1+(Number(u.sizePct)||0));
+    const speedMult=Math.max(0,1+(Number(u.speedPct)||0));
+    const rangeMult=Math.max(0,1+(Number(u.rangePct)||0));
+    const kbMult=Math.max(0,1+(Number(u.knockbackPct)||0));
     if(id==='twinblades'){
       s.twinBladeLength=Math.max(30,45*sizeMult);
       s.twinOffset=.20;s.twinTurn=.92;
@@ -18826,7 +18947,7 @@ Game.weaponSpec=function(p){
   const original=p.weaponUpgrades||{},u=mergedUpgrades(p);
   p.weaponUpgrades=Object.assign({},original,{sizePct:u.sizePct,hitboxPct:0,attackSpeedPct:u.attackSpeedPct,speedPct:0});
   let s;try{s=oldSpec(p);}finally{p.weaponUpgrades=original;}
-  const a=Math.max(.20,1+u.attackSpeedPct);
+  const a=Math.max(0,1+u.attackSpeedPct);
   for(const k of ['attackExtend','attackActive','attackRetract','attackHold','castTime','lungeTime'])if(Number.isFinite(Number(s[k])))s[k]=Number(s[k])/a;
   for(const k of ['returnSpeed','projectileSpeed','slashSpeed','gyroProjectileSpeed','gyroSpinSpeed','spinSpeed','lungeSpeed'])if(Number.isFinite(Number(s[k])))s[k]=Number(s[k])*a;
   return s;
@@ -18846,16 +18967,16 @@ const gyroGroundSpeedMult=.62;
 const tunedSpec=Game.weaponSpec.bind(Game);
 Game.weaponSpec=function(p){
   const s=tunedSpec(p),id=valid(p?.weapon),u=mergedUpgrades(p);
-  if(id==='wand')s.cooldown=2.70*Math.max(.10,1-u.cooldownPct);
+  if(id==='wand')s.cooldown=2.70*Math.max(0,1-u.cooldownPct);
   else if(id==='bo_staff')s.attackHold=1.55;
-  else if(id==='axe')s.cooldown=3.15*1.05*Math.max(.10,1-u.cooldownPct);
-  else if(id==='chakram')s.cooldown=2.40*1.10*Math.max(.10,1-u.cooldownPct);
-  else if(id==='scythe')s.cooldown=4.55*1.30*Math.max(.10,1-u.cooldownPct);
-  else if(id==='twinblades'){s.cooldown=1.85*1.60*Math.max(.10,1-u.cooldownPct);if(Number.isFinite(Number(s.twinBladeLength)))s.twinBladeLength*=.5;if(Number.isFinite(Number(s.activeWidth)))s.activeWidth*=.5;}
+  else if(id==='axe')s.cooldown=3.15*1.05*Math.max(0,1-u.cooldownPct);
+  else if(id==='chakram')s.cooldown=2.40*1.10*Math.max(0,1-u.cooldownPct);
+  else if(id==='scythe')s.cooldown=4.55*1.30*Math.max(0,1-u.cooldownPct);
+  else if(id==='twinblades'){s.cooldown=1.85*1.60*Math.max(0,1-u.cooldownPct);if(Number.isFinite(Number(s.twinBladeLength)))s.twinBladeLength*=.5;if(Number.isFinite(Number(s.activeWidth)))s.activeWidth*=.5;}
   else if(id==='scythe'){if(Number.isFinite(Number(s.bladeLength)))s.bladeLength*=.85;if(Number.isFinite(Number(s.activeWidth)))s.activeWidth*=.85;if(Number.isFinite(Number(s.attackCenter)))s.attackCenter*=.85;}
   else if(id==='flail')s.attackActive=1.0;
   else if(id==='gyroblade'){
-    s.cooldown=gyroCooldownBase*Math.max(.10,1-u.cooldownPct);
+    s.cooldown=gyroCooldownBase*Math.max(0,1-u.cooldownPct);
     s.projectileRange=(Number(s.projectileRange)||510)*gyroRangeMult;
     s.gyroGroundSpeed=(Number(s.gyroProjectileSpeed)||420)*gyroGroundSpeedMult;
   }
@@ -18923,7 +19044,7 @@ const projectile=new Set(['wand','bombardier']);
 const patternable=new Set(['sword','bo_staff','axe','flail','chakram','scythe','lance','twinblades','anchor','gyroblade','katana']);
 function setPattern(game,p){
   if(!p||!patternable.has(valid(p.weapon)))return;
-  const u=p.weaponUpgrades||{},count=Math.max(0,Math.min(6,Math.floor(Number(u.patternConeCount)||0))),interval=Math.max(1,Number(u.patternConeInterval)||2),spread=Math.max(.03,Math.min(.70,Number(u.patternConeSpread)||.24));
+  const u=p.weaponUpgrades||{},count=Math.max(0,Math.floor(Number(u.patternConeCount)||0)),interval=Math.max(1,Number(u.patternConeInterval)||2),spread=Math.max(0,Number(u.patternConeSpread)||.24);
   p.weaponPatternAngles=[];p._weaponPatternAngles=[];if(!count||(Number(p.weaponActionCount)||0)%interval!==0)return;
   const offs=[];for(let i=0;i<count;i++){const ring=Math.floor(i/2)+1;offs.push((i%2===0?-1:1)*ring*spread);}
   p.weaponPatternAngles=offs.map(o=>game.normalizeAngle(Number(p.weaponAttackAngle)+o));p._weaponPatternAngles=p.weaponPatternAngles.slice();
@@ -19132,7 +19253,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
         p._doubleTroubleFinalCooldownPending=false;
         const spec=this.weaponSpec(p);
         const flailFactor=valid(p.weapon)==='flail'?3:1;
-        const finalCooldown=Math.max(0,Number(spec.cooldown)||0)*1.75*flailFactor;
+        const finalCooldown=Math.max(0,Math.max(0,Number(spec.cooldown)||0)*1.75*flailFactor-(flailFactor===3?2:0));
         p.weaponCooldown=finalCooldown;
         p.weaponCooldownMax=finalCooldown;
       }
@@ -19473,19 +19594,9 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
       return false;
     }
 
-    // Show the command itself in lobby chat so everyone sees exactly what was typed.
     const commandText='!open '+String(token||'').trim();
-    const commandMsg={
-      t:'chat',
-      name:String(Game.myName||'Player').slice(0,32),
-      color:Game.myColor(),
-      text:commandText.slice(0,120),
-      ts:Date.now(),
-      sphereboxCommand:true
-    };
-    Chat.append(commandMsg);
-    if(NetworkManager.isHost) NetworkManager.broadcast(commandMsg,true);
-    else NetworkManager.sendToHost(commandMsg,true);
+    Chat.append({t:'chat',name:String(Game.myName||'Player').slice(0,32),
+      color:Game.myColor(),text:commandText.slice(0,120),ts:Date.now(),sphereboxCommand:true});
 
     // Chat openings intentionally skip the normal spherebox reel. The command
     // performs the same actual weighted roll and inventory award immediately.
@@ -19528,15 +19639,10 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
       effectKind:boxKindLabel(announcement.kind)
     };
 
-    // Use the existing normal chat transport for the SYSTEM result. That path
-    // already relays non-host chat through the host to every client, while the
-    // metadata below preserves the special effect-name typography.
-    if(NetworkManager.isHost){
-      Chat.append(msg);
-      NetworkManager.broadcast(msg,true);
-    }else{
-      Chat.append(msg);
-      NetworkManager.sendToHost(msg,true);
+    Chat.append(msg);
+    if(['epic','legendary','mythic'].includes(rarity)){
+      if(NetworkManager.isHost)NetworkManager.broadcast(msg,true);
+      else NetworkManager.sendToHost(msg,true);
     }
     return true;
   };
@@ -19657,28 +19763,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
     Chat.append(makeSphereCatalogMessage());
   }
 
-  const priorOnData=NetworkManager.onData;
-  NetworkManager.onData=function(pid,data){
-    if(!data || typeof data!=='object') return priorOnData?.(pid,data);
-
-    // Dedicated spherebox traffic is consumed here before the long chain of
-    // gameplay handleNetData wrappers. This makes it work for every client role.
-    if(data.t==='spherebox_unbox'){
-      // Compatibility with stale clients; current clients use the normal chat path.
-      return;
-    }
-
-    if(data.t==='spherebox_unbox_announce'){
-      showResult(data.announce||{});
-      return;
-    }
-
-    if(data.t==='spherebox_catalog_request'){
-      return;
-    }
-
-    return priorOnData?.(pid,data);
-  };
+  // Legacy Spherebox packets are ignored by the main handler.
   NetworkManager.__sphereboxChatNetworkV72=true;
 })();
 </script>
@@ -20281,7 +20366,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 
   /* Cursed means high upside with an actual tradeoff. */
   for(const c of ROGUE_CARDS){
-    if(!c||c.rarity!=='cursed'||c.key==='patternCone'||c.key==='compound')continue;
+    if(!c||c.rarity!=='cursed'||c.key==='patternCone'||c.key==='compound'||c.key==='pickAmplifier')continue;
     const v=c.key==='multi'?(c.value||{}):{[c.key]:Number(c.value)||0};
     const hasDrawback=Number(v.rangePct)<0||Number(v.sizePct)<0||Number(v.cooldownPct)<0||Number(v.knockbackPct)<0;
     if(!hasDrawback && c.id!=='doubleTrouble')v.cooldownPct=-.18;
@@ -20291,7 +20376,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
   /* Keep each rarity inside a predictable power band. This is based on the
      actual gameplay direction of each stat, not the printed sign. */
   for(const c of ROGUE_CARDS){
-    if(!c||c.key==='patternCone'||c.key==='compound'||c.key==='doubleTrouble')continue;
+    if(!c||c.key==='patternCone'||c.key==='compound'||c.key==='pickAmplifier'||c.key==='doubleTrouble')continue;
     const v=c.key==='multi'?(c.value||{}):{[c.key]:Number(c.value)||0};
     const n=net(v),cap=caps[c.rarity]||.60;
     if(n>cap+.0005){
@@ -20326,9 +20411,234 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
   if(cone&&cone.value){cone.value.patternConeCount=2;cone.value.patternConeInterval=2;cone.value.patternConeSpread=.28;}
   if(fan&&fan.value){fan.value.patternConeCount=3;fan.value.patternConeInterval=3;fan.value.patternConeSpread=.24;fan.effect='EVERY 3RD ATTACK FIRES 3 EXTRA WEAPONS';fan.desc='Three extra attacks spread across a wider fan on every third attack.';}
   const ci=find('compoundInterest');
-  if(ci){ci.value=1.30;ci.effect='EVERY 3RD PICK IS 30% STRONGER';ci.desc='Every third, sixth, ninth, and later third pick gains a 30% bonus.';}
+  if(ci){ci.value=2;ci.effect='EVERY 3RD LATER PICK IS 2× STRONGER';ci.desc='Every third pick after this card grants 2× its stats. Overlapping bonuses multiply.';}
 
   Game.__plunkV69RoguelikeCardBalance=true;
+})();
+</script>
+
+
+<script id="plunk-v84-final-weapon-fix-and-uncapped-stats">
+(function(){
+  'use strict';
+  if(typeof Game==='undefined'||typeof WEAPONS==='undefined')return;
+  const finite=v=>Number.isFinite(Number(v))?Number(v):0;
+  const valid=id=>typeof validWeapon==='function'?validWeapon(id||'sword'):(id||'sword');
+  const statUpgrades=p=>{
+    const u=p?.weaponUpgrades||{};
+    return {
+      range:Number(u.rangePct)||0,
+      cooldown:Number(u.cooldownPct)||0,
+      size:(Number(u.sizePct)||0)+(Number(u.hitboxPct)||0),
+      attackTime:(Number(u.attackSpeedPct)||0)+(Number(u.speedPct)||0),
+      knockback:Number(u.knockbackPct)||0
+    };
+  };
+  const sizeFields=new Set([
+    'idleInner','idleOuter','idleWidth','bladeLength','idleCenter','attackCenter','activeWidth','staffLength',
+    'throwStart','throwEnd','strikeRange','ballRadius','chainWidth','handleLength','swingInner','swingOuter',
+    'discRadius','discThickness','projectileRadius','slashRadius','slashLength','twinBladeLength',
+    'anchorLength','anchorHeadRadius','anchorChainWidth','gyroRadius','bombOrbitRadius','bombRadius',
+    'fireworkExplosionRadius','potionGoopRadius','pitchforkLength','pitchforkTineWidth'
+  ]);
+  const rangeFields=new Set(['attackCenter','throwEnd','strikeRange','throwRange','swingOuter','slashRange','projectileRange','lungeTime','pitchforkLength']);
+  const timeFields=new Set(['attackExtend','attackActive','attackRetract','attackHold','castTime','lungeTime','attackReturn','returnTime']);
+  const speedFields=new Set(['returnSpeed','projectileSpeed','slashSpeed','gyroProjectileSpeed','gyroSpinSpeed','spinSpeed','lungeSpeed','gyroGroundSpeed','fireworkAcceleration','fireworkMaxSpeed','anchorThrowSpeed']);
+
+  // Rebuild Weaponry's Rogue stat multipliers from an unmodified reference spec.
+  // This removes old max(.05/.10) clamps without duplicating the many special base
+  // weapon tweaks already present in the file. Only physical lower bounds remain.
+  const priorSpec=Game.weaponSpec?.bind(Game);
+  if(priorSpec){
+    Game.weaponSpec=function(p){
+      if(!p)return priorSpec(p);
+      const original=p.weaponUpgrades||{};
+      const u=statUpgrades(p);
+      const zero=Object.assign({},original,{rangePct:0,cooldownPct:0,sizePct:0,hitboxPct:0,attackSpeedPct:0,speedPct:0,knockbackPct:0});
+      let base;
+      p.weaponUpgrades=zero;
+      try{base=priorSpec(p);}finally{p.weaponUpgrades=original;}
+      const s=Object.assign({},base||{});
+      const sizeMult=Math.max(0,1+u.size);
+      const rangeMult=Math.max(0,1+u.range);
+      const kbMult=Math.max(0,1+u.knockback);
+      const cdMult=Math.max(0,1-u.cooldown);
+      const timeMult=Math.max(.1,1+u.attackTime);
+
+      for(const k of sizeFields){
+        if(Number.isFinite(Number(s[k])))s[k]=Number(s[k])*sizeMult;
+      }
+      for(const k of rangeFields){
+        if(Number.isFinite(Number(s[k])))s[k]=Number(s[k])*rangeMult;
+      }
+      if(Number.isFinite(Number(s.cooldown)))s.cooldown=Math.max(0,Number(s.cooldown)*cdMult);
+      if(Number.isFinite(Number(s.contactKnockback)))s.contactKnockback=Math.max(0,Number(s.contactKnockback)*kbMult);
+      if(Number.isFinite(Number(s.bombKnockback)))s.bombKnockback=Math.max(0,Number(s.bombKnockback)*kbMult);
+      s.hitboxMult=Math.max(0,1+(Number(original.hitboxPct)||0));
+      if(Number.isFinite(Number(base?.hitboxBonus)))s.hitboxBonus=Math.max(0,Number(base.hitboxBonus)*s.hitboxMult);
+
+      for(const k of timeFields){
+        if(Number.isFinite(Number(s[k])))s[k]=Math.max(0,Number(s[k])*timeMult);
+      }
+      const speedDiv=Math.max(timeMult,1e-9); // finite numerical floor, not a gameplay cap
+      for(const k of speedFields){
+        if(Number.isFinite(Number(s[k])))s[k]=Number(s[k])/speedDiv;
+      }
+
+      // A few later weapon-specific specs carry projectile/area dimensions outside
+      // the common size field set. Keep their Rogue size scaling uncapped as well.
+      for(const k of ['bombBlastRadius','potionGoopRadius','fireworkExplosionRadius','gyroRadius','bombRadius','anchorHeadRadius']){
+        if(Number.isFinite(Number(base?.[k])) && !sizeFields.has(k))s[k]=Number(base[k])*sizeMult;
+      }
+      // Gyroblade's requested +5% base range applies to its rolling projectile reach too.
+      if(valid(p.weapon)==='gyroblade' && Number.isFinite(Number(s.projectileRange)))s.projectileRange*=1.05;
+      return s;
+    };
+  }
+
+  // -------- Bo Staff + Chakram: true swept world-space collision --------
+  const oldUpdate=Game.updateWeapons?.bind(Game);
+  const thrownOwners=new Set(['bo_staff','chakram']);
+  function segCircle(px,py,r,a,b){
+    const dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy;
+    const t=l2>1e-9?Math.max(0,Math.min(1,((px-a.x)*dx+(py-a.y)*dy)/l2)):0;
+    const qx=a.x+dx*t,qy=a.y+dy*t,rx=px-qx,ry=py-qy;
+    return rx*rx+ry*ry<=r*r;
+  }
+  function boSweptHit(game,p,target,prev,g,s){
+    const L=Math.max(0,finite(g.length||s.staffLength||92));
+    const half=Math.max(2,finite(s.activeWidth||7)/2);
+    const r=Math.max(1,finite(target.radius||26))+half+1;
+    const pa=finite(prev.rotation||p.weaponAttackAngle), na=finite(g.rotation||p.weaponAttackAngle);
+    // Five longitudinal samples approximate the swept capsule while preserving the
+    // staff's world-space endpoint and preventing owner-body false positives.
+    const samples=[-.5,-.25,0,.25,.5];
+    for(const f of samples){
+      const po={x:finite(prev.x)+Math.cos(pa)*(L*f),y:finite(prev.y)+Math.sin(pa)*(L*f)};
+      const no={x:finite(g.worldX)+Math.cos(na)*(L*f),y:finite(g.worldY)+Math.sin(na)*(L*f)};
+      if(segCircle(target.x,target.y,r,po,no))return true;
+    }
+    return false;
+  }
+  function chakramSweptHit(game,p,target,prev,g,s){
+    const rr=Math.max(1,finite(g.discRadius||s.discRadius||17))+2;
+    const r=Math.max(1,finite(target.radius||26))+rr;
+    return segCircle(target.x,target.y,r,{x:finite(prev.x),y:finite(prev.y)},{x:finite(g.worldX),y:finite(g.worldY)}) ||
+      ((target.x-finite(g.worldX))**2+(target.y-finite(g.worldY))**2<=r*r);
+  }
+  function thrownSweepContact(game,p,prev,now){
+    if(!game.isHost||!p?.alive||p.spectator||!thrownOwners.has(valid(p.weapon))||p.weaponPhase==='idle')return;
+    const id=valid(p.weapon),s=game.weaponSpec(p)||{},g=game.weaponRenderGeometry(p);
+    if(!g||!Number.isFinite(Number(g.worldX))||!Number.isFinite(Number(g.worldY)))return;
+    const locks=p.weaponContactLocks||(p.weaponContactLocks={});
+    const lockMs=Math.max(.01,Number(s.contactCooldown)||.20)*1000;
+    for(const target of Object.values(game.players||{})){
+      if(!target||target.id===p.id||!target.alive||target.spectator)continue;
+      if(Number(locks[target.id]||0)>now)continue;
+      const hit=id==='bo_staff'?boSweptHit(game,p,target,prev,g,s):chakramSweptHit(game,p,target,prev,g,s);
+      if(!hit)continue;
+      locks[target.id]=now+lockMs;
+      if(game.weaponDeathEnabled() && p.weaponPhase!=='idle')game.weaponEliminate(p,target,id,target.x,target.y);
+      else game.weaponApplyKnockback(p,target,id,typeof game.weaponHitSpeed==='function'?game.weaponHitSpeed(p,id):Number(s.contactKnockback)||320);
+    }
+  }
+  if(oldUpdate){
+    Game.updateWeapons=function(dt){
+      const samples=[];
+      for(const p of Object.values(this.players||{})){
+        if(!p||!thrownOwners.has(valid(p.weapon))||p.weaponPhase==='idle')continue;
+        samples.push({p,x:finite(p.weaponWorldX),y:finite(p.weaponWorldY),rotation:finite(p.weaponAttackAngle)});
+      }
+      oldUpdate(dt);
+      const now=performance.now();
+      for(const q of samples){
+        const p=q.p;
+        if(!p||!p.alive||p.spectator)continue;
+        thrownSweepContact(this,p,q,now);
+      }
+    };
+  }
+
+  // -------- Flail: monotonic extension independent of player contacts --------
+  if(oldUpdate){
+    const oldForFlail=Game.updateWeapons.bind(Game);
+    Game.updateWeapons=function(dt){
+      const masked=[];
+      for(const p of Object.values(this.players||{})){
+        if(!p||valid(p.weapon)!=='flail')continue;
+        masked.push({p,weapon:p.weapon,phase:p.weaponPhase,phaseTime:p.weaponPhaseTime,alive:p.alive,spectator:p.spectator,worldX:p.weaponWorldX,worldY:p.weaponWorldY,attackAngle:p.weaponAttackAngle,orbitAngle:p.weaponOrbitAngle,activeRotation:p.weaponActiveRotation,cooldown:p.weaponCooldown,cooldownMax:p.weaponCooldownMax,hitIds:p.weaponHitIds,locks:p.weaponContactLocks,wall:p.weaponWallBlocked,dist:p.flailCurrentDistance});
+        // Let the existing wrapper update everyone else without touching Flail.
+        p.weapon='sword';p.weaponPhase='idle';p.weaponPhaseTime=0;p.alive=false;p.spectator=false;
+      }
+      oldForFlail(dt);
+      for(const m of masked){
+        const p=m.p;
+        p.weapon=m.weapon;p.weaponPhase=m.phase;p.weaponPhaseTime=m.phaseTime;p.alive=m.alive;p.spectator=m.spectator;
+        p.weaponWorldX=m.worldX;p.weaponWorldY=m.worldY;p.weaponAttackAngle=m.attackAngle;p.weaponOrbitAngle=m.orbitAngle;p.weaponActiveRotation=m.activeRotation;p.weaponCooldown=m.cooldown;p.weaponCooldownMax=m.cooldownMax;p.weaponHitIds=m.hitIds;p.weaponContactLocks=m.locks;p.weaponWallBlocked=m.wall;p.flailCurrentDistance=m.dist;
+      }
+
+      const now=performance.now();
+      for(const p of Object.values(this.players||{})){
+        if(!p||valid(p.weapon)!=='flail'||p.spectator||!p.alive)continue;
+        const s=this.weaponSpec(p)||{};
+        if(p.weaponPhase==='idle'){
+          p.weaponOrbitAngle=this.normalizeAngle((Number(p.weaponOrbitAngle)||0)+(Number(s.orbitSpeed)||2.7)*dt);
+          p.flailCurrentDistance=Number(s.idleOuter)||74;
+          p.weaponWorldX=p.x+Math.cos(p.weaponOrbitAngle)*p.flailCurrentDistance;
+          p.weaponWorldY=p.y+Math.sin(p.weaponOrbitAngle)*p.flailCurrentDistance;
+          this.weaponPlayerContact(p,p.weaponOrbitAngle,s.idleInner,s.idleOuter,s.idleWidth,'idle',now);
+          continue;
+        }
+        p.weaponPhaseTime=(Number(p.weaponPhaseTime)||0)+dt;
+        const a=Number(p.weaponAttackAngle)||Number(p.weaponOrbitAngle)||0;
+        const idle=Math.max(0,Number(s.idleOuter)||74);
+        const maxRange=idle+Math.max(0,Number(s.strikeRange)||218);
+        if(p.weaponPhase==='extend'){
+          const t=Math.max(0,Math.min(1,p.weaponPhaseTime/Math.max(.001,Number(s.attackExtend)||.095)));
+          const eased=t*t*(3-2*t);
+          const previous=Math.max(idle,Number(p.flailCurrentDistance)||idle);
+          const desired=Math.max(previous,idle+(maxRange-idle)*eased);
+          const wall=this.weaponClampAgainstWalls(p,a,previous,desired,Number(s.ballRadius)||14);
+          let d=Math.max(previous,Math.min(desired,Number(wall.distance)||desired));
+          p.flailCurrentDistance=d;
+          p.weaponWorldX=p.x+Math.cos(a)*d;p.weaponWorldY=p.y+Math.sin(a)*d;p.weaponWallBlocked=!!wall.blocked;
+          this.weaponActiveContact(p,a,0,0,s.activeWidth,'flail');
+          // A player hit never changes d. Only a map obstacle or reaching max range ends extension.
+          if(wall.blocked||d>=maxRange-0.01||p.weaponPhaseTime>=Number(s.attackExtend||.095)){
+            if(!wall.blocked)d=maxRange;
+            p.flailCurrentDistance=d;p.weaponWorldX=p.x+Math.cos(a)*d;p.weaponWorldY=p.y+Math.sin(a)*d;
+            p.weaponPhase='active';p.weaponPhaseTime=0;
+          }
+        }else if(p.weaponPhase==='active'){
+          const wall=this.weaponClampAgainstWalls(p,a,idle,Math.max(idle,Number(p.flailCurrentDistance)||idle),Number(s.ballRadius)||14);
+          const d=Number(p.flailCurrentDistance)||maxRange;
+          p.weaponWorldX=p.x+Math.cos(a)*Math.min(d,Number(wall.distance)||d);p.weaponWorldY=p.y+Math.sin(a)*Math.min(d,Number(wall.distance)||d);
+          this.weaponActiveContact(p,a,0,0,s.activeWidth,'flail');
+          if(p.weaponPhaseTime>=Number(s.attackActive||.09)){p.weaponPhase='retract';p.weaponPhaseTime=0;}
+        }else if(p.weaponPhase==='retract'){
+          const current=Math.max(idle,Number(p.flailCurrentDistance)||idle);
+          const step=Math.max(0,Number(s.returnSpeed)||1240)*dt;
+          const d=Math.max(idle,current-step);
+          p.flailCurrentDistance=d;p.weaponWorldX=p.x+Math.cos(a)*d;p.weaponWorldY=p.y+Math.sin(a)*d;
+          this.weaponActiveContact(p,a,0,0,s.activeWidth,'flail');
+          if(d<=idle+0.01){p.flailCurrentDistance=idle;p.weaponOrbitAngle=this.normalizeAngle(a);this.endWeaponAttack(p);}
+        }
+      }
+    };
+  }
+
+  // Initialize the Flail distance at attack start so the new simulation never
+  // inherits a stale endpoint from a previous attack.
+  const priorStart=Game.startWeaponAttack?.bind(Game);
+  if(priorStart){
+    Game.startWeaponAttack=function(p,angle,fromInput=false,remoteSeq=null){
+      const r=priorStart(p,angle,fromInput,remoteSeq);
+      if(r&&p&&valid(p.weapon)==='flail')p.flailCurrentDistance=Number(this.weaponSpec(p).idleOuter)||74;
+      return r;
+    };
+  }
+
+  Game.__plunkV84FinalWeaponBalance=true;
 })();
 </script>
 
@@ -22744,7 +23054,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
     if(IDS.has(id))s.orbitHitboxBonus=6;
     if(id==='bombardier'){
       // A substantial increase to Bombardier's explosive knockback.
-      s.bombKnockback=Math.max(180,950*Math.max(.05,1+(Number(p?.weaponUpgrades?.knockbackPct)||0)));
+      s.bombKnockback=Math.max(0,950*Math.max(0,1+(Number(p?.weaponUpgrades?.knockbackPct)||0)));
     }
     return s;
   };
@@ -23105,7 +23415,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
     baseEndWeaponAttackV55(p);
     if(wasFlail && p && p.weaponPhase==='idle'){
       const spec=this.weaponSpec(p);
-      const postReturnCooldown=Math.max(0,Number(spec.cooldown)||0)*3;
+      const postReturnCooldown=Math.max(0,Math.max(0,Number(spec.cooldown)||0)*3-2);
       p.weaponCooldown=postReturnCooldown;
       p.weaponCooldownMax=postReturnCooldown;
     }
@@ -23622,6 +23932,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 
   function winnerFrom(data){
     const list=Array.isArray(data?.winnerPreviews)?data.winnerPreviews.filter(Boolean):[];
+    if(data?.finalLeaderPreview) return data.finalLeaderPreview;
     if(data?.winnerPreview) return data.winnerPreview;
     if(list.length) return list[0];
     if(data?.winnerId && Game.players?.[data.winnerId]){
@@ -23780,9 +24091,11 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 
   previousShowResults=UI.showResults.bind(UI);
   UI.showResults=function(results,scores,finalData=null){
-    const key=String(finalData?.transitionId||finalData?.round||'')+'|'+String(finalData?.winnerId||finalData?.winnerPreview?.id||'')+'|'+String(results?.length||0);
+    const key=String(finalData?.transitionId||finalData?.round||'')+'|'+String(finalData?.finalLeaderPreview?.id||finalData?.winnerPreview?.id||finalData?.winnerId||'')+'|'+String(results?.length||0);
     if(Game.__plunkWinnerRevealKey===key && root.classList.contains('active')) return;
     Game.__plunkWinnerRevealKey=key;
+    UI.hideRoundIntermission?.();
+    document.getElementById('roundIntermissionOverlay')?.classList.remove('active','fade-out');
     startReveal(finalData,()=>previousShowResults(results,scores,finalData));
   };
 
@@ -23825,8 +24138,8 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
       cooldown:Number(u.cooldownPct)||0,
       kb:Number(u.knockbackPct)||0,
       attackTime:Number(u.attackSpeedPct||0)-Number(u.speedPct||0),
-      coneCount:Math.max(0,Math.min(8,Math.floor(Number(u.patternConeCount)||0))),
-      coneSpread:clamp(Number(u.patternConeSpread)||.24,.03,.70),
+      coneCount:Math.max(0,Math.floor(Number(u.patternConeCount)||0)),
+      coneSpread:Math.max(0,Number(u.patternConeSpread)||.24),
       coneInterval:Math.max(1,Number(u.patternConeInterval)||2),
       doubleTrouble:Number(u.doubleTrouble)||0
     };
@@ -23834,7 +24147,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 
   function customSizeMult(p){
     const u=stats(p), playerScale=clamp(finite(p?.radius,26)/26,.25,4);
-    return playerScale*Math.max(.05,1+u.size);
+    return playerScale*Math.max(0,1+u.size);
   }
 
   function customAngles(game,p,base){
@@ -23939,22 +24252,22 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
   Game.weaponSpec=function(p){
     const s=priorSpec(p),id=valid(p?.weapon);
     if(!IDS.has(id))return s;
-    const u=stats(p),raw=WEAPONS[id],sm=customSizeMult(p),a=Math.max(.20,1+u.attackTime);
+    const u=stats(p),raw=WEAPONS[id],sm=customSizeMult(p),a=Math.max(0,1+u.attackTime);
     if(id==='firework_cannon'){
-      s.projectileRange=Number(raw.projectileRange||760)*Math.max(.05,1+u.range);
+      s.projectileRange=Number(raw.projectileRange||760)*Math.max(0,1+u.range);
       s.fireworkAcceleration=Number(raw.fireworkAcceleration||720)/a;
       s.fireworkMaxSpeed=Number(raw.fireworkMaxSpeed||1320)/a;
       s.fireworkLife=Math.max(.8,Number(raw.fireworkLife||4.2)*a);
       s.fireworkExplosionRadius=Number(raw.fireworkExplosionRadius||62)*sm;
     }else if(id==='potion'){
-      s.projectileRange=Number(raw.projectileRange||560)*Math.max(.05,1+u.range);
+      s.projectileRange=Number(raw.projectileRange||560)*Math.max(0,1+u.range);
       s.potionGravity=Number(raw.potionGravity||2050);
       s.potionLob=Number(raw.potionLob||345)/a;
       s.potionGoopRadius=Number(raw.potionGoopRadius||60)*sm;
       s.potionGoopLife=Number(raw.potionGoopLife||2);
     }else if(id==='pitchfork'){
       s.pitchforkLength=Number(raw.pitchforkLength||72)*sm;
-      s.attackCenter=Number(s.attackCenter||raw.attackCenter||72)*Math.max(.05,1+u.range);
+      s.attackCenter=Number(s.attackCenter||raw.attackCenter||72)*Math.max(0,1+u.range);
     }
     return s;
   };
@@ -24621,8 +24934,8 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
       size:Number(u.sizePct)||0,
       attackTime:Number(u.attackSpeedPct)||0,
       knockback:Number(u.knockbackPct)||0,
-      patternCount:Math.max(0,Math.min(8,Math.floor(Number(p?.weaponUpgrades?.patternConeCount)||0))),
-      patternSpread:Math.max(.03,Math.min(.70,Number(p?.weaponUpgrades?.patternConeSpread)||.24)),
+      patternCount:Math.max(0,Math.floor(Number(p?.weaponUpgrades?.patternConeCount)||0)),
+      patternSpread:Math.max(0,Number(p?.weaponUpgrades?.patternConeSpread)||.24),
       patternInterval:Math.max(1,Number(p?.weaponUpgrades?.patternConeInterval)||2),
       doubleTrouble:Number(p?.weaponUpgrades?.doubleTrouble)||0
     };
@@ -24995,7 +25308,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
     if(finalWeaponSpec && !Game.__plunkV68CooldownSpecWrapped){
       Game.weaponSpec=function(p){
         const s=finalWeaponSpec(p),id=typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):String(p?.weapon||'sword');
-        const u=p?.weaponUpgrades||{},cd=Math.max(.10,1-(Number(u.cooldownPct)||0));
+        const u=p?.weaponUpgrades||{},cd=Math.max(0,1-(Number(u.cooldownPct)||0));
         if(id==='bombardier')s.cooldown=1.20*cd;
         else if(id==='pitchfork')s.cooldown=6.50*cd;
         else if(id==='firework_cannon')s.cooldown=6.00*cd;
@@ -25112,5 +25425,354 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 })();
 </script>
 
+
+<style id="plunk-v86-final-weapon-balance-style">
+/* v86 final cleanup has no visual overrides; this marker keeps the patch easy to locate. */
+</style>
+<script id="plunk-v86-final-weapon-balance-authority">
+(function(){
+  'use strict';
+  if(typeof Game==='undefined'||typeof WEAPONS==='undefined')return;
+
+  const valid=id=>typeof validWeapon==='function'?validWeapon(id||'sword'):(id||'sword');
+  const num=v=>Number.isFinite(Number(v))?Number(v):0;
+  const alive=p=>!!p&&p.alive&&!p.spectator;
+  const modeWeaponry=game=>{try{return typeof game.isWeaponry==='function'?!!game.isWeaponry():game.mode==='weaponry';}catch(_){return game.mode==='weaponry';}};
+
+  /* ------------------------------------------------------------------
+     FINAL ROGUELIKE SPEC
+     Build from the last non-Rogue base spec, then apply the five live Rogue
+     stats once. There are no upper ceilings. Physical multipliers may reach
+     exactly zero, and cooldown may reach exactly zero at -100% or beyond.
+  ------------------------------------------------------------------ */
+  const previousSpec=Game.weaponSpec?.bind(Game);
+  if(previousSpec){
+    Game.weaponSpec=function(p){
+      if(!p)return previousSpec(p);
+      const original=p.weaponUpgrades||{};
+      const u0={
+        range:Number(original.rangePct)||0,
+        cooldown:Number(original.cooldownPct)||0,
+        size:(Number(original.sizePct)||0)+(Number(original.hitboxPct)||0),
+        attackTime:(Number(original.attackSpeedPct)||0)+(Number(original.speedPct)||0),
+        knockback:Number(original.knockbackPct)||0
+      };
+      const zero=Object.assign({},original,{rangePct:0,cooldownPct:0,sizePct:0,hitboxPct:0,attackSpeedPct:0,speedPct:0,knockbackPct:0});
+      let base;
+      p.weaponUpgrades=zero;
+      try{base=previousSpec(p);}finally{p.weaponUpgrades=original;}
+      const s=Object.assign({},base||{});
+      const id=valid(p.weapon);
+      const sizeMult=Math.max(0,1+u0.size);
+      const rangeMult=Math.max(0,1+u0.range);
+      const cooldownMult=Math.max(0,1-u0.cooldown);
+      const knockbackMult=Math.max(0,1+u0.knockback);
+      const timeMult=Math.max(.1,1+u0.attackTime);
+
+      /* Model/contact dimensions. Deliberately no upper cap. */
+      const sizeFields=new Set([
+        'idleInner','idleOuter','idleWidth','bladeLength','idleCenter','activeWidth','staffLength',
+        'throwStart','ballRadius','chainWidth','handleLength','swingInner','discRadius','discThickness',
+        'projectileRadius','slashRadius','slashLength','twinBladeLength','anchorLength','anchorHeadRadius',
+        'anchorChainWidth','gyroRadius','bombOrbitRadius','bombRadius','bombBlastRadius',
+        'fireworkExplosionRadius','potionGoopRadius','pitchforkTineWidth'
+      ]);
+      for(const k of sizeFields)if(Number.isFinite(Number(s[k])))s[k]=Number(s[k])*sizeMult;
+
+      /* Reach/range dimensions. Do not also apply them as SIZE. */
+      const rangeFieldsById={
+        sword:['attackCenter'],
+        wand:['projectileRange'],
+        bo_staff:['throwEnd'],
+        axe:['attackCenter','swingOuter'],
+        flail:['strikeRange'],
+        chakram:['throwRange'],
+        scythe:['attackCenter'],
+        lance:['attackCenter'],
+        twinblades:['attackCenter'],
+        anchor:['attackCenter'],
+        gyroblade:['attackCenter','projectileRange'],
+        bombardier:['projectileRange'],
+        firework_cannon:['projectileRange'],
+        potion:['projectileRange'],
+        pitchfork:['attackCenter','pitchforkLength'],
+        katana:['attackCenter','slashRange']
+      };
+      for(const k of (rangeFieldsById[id]||[]))if(Number.isFinite(Number(s[k])))s[k]=Number(s[k])*rangeMult;
+
+      if(Number.isFinite(Number(s.cooldown)))s.cooldown=Math.max(0,Number(s.cooldown)*cooldownMult);
+      if(Number.isFinite(Number(s.contactKnockback)))s.contactKnockback=Math.max(0,Number(s.contactKnockback)*knockbackMult);
+      if(Number.isFinite(Number(s.bombKnockback)))s.bombKnockback=Math.max(0,Number(s.bombKnockback)*knockbackMult);
+
+      s.hitboxMult=Math.max(0,1+(Number(original.hitboxPct)||0));
+      if(Number.isFinite(Number(base?.hitboxBonus)))s.hitboxBonus=Math.max(0,Number(base.hitboxBonus)*s.hitboxMult);
+
+      /* Attack Time is a true time multiplier: negative is faster. */
+      const timeFields=['attackExtend','attackActive','attackRetract','attackHold','castTime','attackReturn','returnTime'];
+      for(const k of timeFields)if(Number.isFinite(Number(s[k])))s[k]=Math.max(0,Number(s[k])*timeMult);
+      const speedDiv=Math.max(timeMult,1e-9);
+      const speedFields=['returnSpeed','projectileSpeed','slashSpeed','gyroProjectileSpeed','gyroSpinSpeed','spinSpeed','lungeSpeed','gyroGroundSpeed','fireworkAcceleration','fireworkMaxSpeed','anchorThrowSpeed'];
+      for(const k of speedFields)if(Number.isFinite(Number(s[k])))s[k]=Number(s[k])/speedDiv;
+
+      /* Explicitly lock in the requested base balance changes at the final spec. */
+      if(id==='wand')s.cooldown=2.70*cooldownMult;
+      if(id==='wand')s.projectileRadius=7.2*sizeMult;
+      if(id==='sword')s.attackCenter=107.8*rangeMult;
+      if(id==='axe'){s.attackCenter=105.8*rangeMult;s.swingOuter=131.1*rangeMult;}
+      if(id==='firework_cannon')s.fireworkExplosionRadius=126*sizeMult;
+      if(id==='gyroblade'){s.attackCenter=79.8*rangeMult;s.projectileRange=(Number(s.projectileRange)||0)*1.05;}
+      if(id==='scythe'){
+        /* The 50% buff is attack-only; idle/orbit impact remains the normal 410. */
+        s.contactKnockback=Math.max(0,410*knockbackMult*(p.weaponPhase&&p.weaponPhase!=='idle'?1.5:1));
+      }
+      if(id==='bo_staff')s.throwEnd=224*rangeMult;
+      if(id==='chakram')s.throwRange=158*rangeMult;
+      if(id==='flail')s.strikeRange=218*rangeMult;
+      if(id==='pitchfork')s.pitchforkLength=72*rangeMult;
+      if(id==='katana')s.slashRange=170*rangeMult;
+      if(id==='lance')s.attackCenter=94*rangeMult;
+
+      /* Pattern stats have no upper cap; only meaningful lower bounds remain. */
+      s.patternConeCount=Math.max(0,Math.floor(Number(original.patternConeCount)||0));
+      s.patternConeSpread=Math.max(0,Number(original.patternConeSpread)||0);
+      s.patternConeInterval=Math.max(1,Number(original.patternConeInterval)||2);
+      if(Number(original.doubleTrouble)>0)s.doubleTrouble=Number(original.doubleTrouble);
+      return s;
+    };
+  }
+
+  /* ------------------------------------------------------------------
+     BO STAFF + CHAKRAM
+     Their thrown weapons are the sole authority for thrown collision. All
+     old radial/one-hit routines are bypassed while they are away from the
+     player, which also eliminates Death Weapons false body-touch kills.
+  ------------------------------------------------------------------ */
+  const thrown=new Set(['bo_staff','chakram']);
+  const isThrown=p=>alive(p)&&thrown.has(valid(p.weapon))&&String(p.weaponPhase||'idle')!=='idle';
+  const priorPlayerContact=Game.weaponPlayerContact?.bind(Game);
+  if(priorPlayerContact){
+    Game.weaponPlayerContact=function(attacker,angle,inner,outer,width,kind,now){
+      if(isThrown(attacker))return;
+      return priorPlayerContact(attacker,angle,inner,outer,width,kind,now);
+    };
+  }
+  const priorActiveContact=Game.weaponActiveContact?.bind(Game);
+  if(priorActiveContact){
+    Game.weaponActiveContact=function(attacker,angle,inner,outer,width,kind){
+      if(isThrown(attacker))return;
+      if(valid(attacker?.weapon)==='flail'&&alive(attacker)){
+        return continuousFlailContact(this,attacker,angle,kind);
+      }
+      return priorActiveContact(attacker,angle,inner,outer,width,kind);
+    };
+  }
+  const priorPathContact=Game.weaponPointPathContact?.bind(Game);
+  if(priorPathContact){
+    Game.weaponPointPathContact=function(attacker,x1,y1,x2,y2,kind,bonus=0){
+      if(isThrown(attacker))return false;
+      return priorPathContact(attacker,x1,y1,x2,y2,kind,bonus);
+    };
+  }
+  const priorSegmentHit=Game.weaponSegmentHit?.bind(Game);
+  if(priorSegmentHit){
+    Game.weaponSegmentHit=function(p,angle,inner,outer,width,target){
+      if(isThrown(p))return false;
+      return priorSegmentHit(p,angle,inner,outer,width,target);
+    };
+  }
+
+  const segCircle=(px,py,r,a,b)=>{
+    const dx=b.x-a.x,dy=b.y-a.y,l2=dx*dx+dy*dy;
+    const t=l2>1e-9?Math.max(0,Math.min(1,((px-a.x)*dx+(py-a.y)*dy)/l2)):0;
+    const qx=a.x+dx*t,qy=a.y+dy*t,rx=px-qx,ry=py-qy;
+    return rx*rx+ry*ry<=r*r;
+  };
+  const boSwept=(game,target,prev,g,s)=>{
+    const L=Math.max(0,Number(g.length||s.staffLength||92));
+    const pad=Math.max(0,Number(s.activeWidth||7)/2);
+    const r=Math.max(0,Number(target.radius)||26)+pad;
+    const pa=Number(prev.rotation)||0,na=Number(g.rotation)||0;
+    for(let i=0;i<=10;i++){
+      const f=-.5+i/10;
+      const a={x:Number(prev.x)+Math.cos(pa)*L*f,y:Number(prev.y)+Math.sin(pa)*L*f};
+      const b={x:Number(g.worldX)+Math.cos(na)*L*f,y:Number(g.worldY)+Math.sin(na)*L*f};
+      if(segCircle(Number(target.x)||0,Number(target.y)||0,r,a,b))return true;
+    }
+    return false;
+  };
+  const chakramSwept=(game,target,prev,g,s)=>{
+    const rr=Math.max(0,Number(g.discRadius||s.discRadius||17));
+    const r=Math.max(0,Number(target.radius)||26)+rr;
+    return segCircle(Number(target.x)||0,Number(target.y)||0,r,{x:Number(prev.x),y:Number(prev.y)},{x:Number(g.worldX),y:Number(g.worldY)});
+  };
+  function thrownSweepContact(game,p,prevGeom,now){
+    if(!isThrown(p))return;
+    const id=valid(p.weapon),s=game.weaponSpec(p)||{},g=game.weaponRenderGeometry(p);
+    if(!g||!Number.isFinite(Number(g.worldX))||!Number.isFinite(Number(g.worldY)))return;
+    const locks=p.weaponContactLocks||(p.weaponContactLocks={});
+    const lockMs=Math.max(.01,Number(s.contactCooldown)||.20)*1000;
+    for(const target of Object.values(game.players||{})){
+      if(!target||target.id===p.id||!target.alive||target.spectator)continue;
+      if(Number(locks[target.id]||0)>now)continue;
+      const hit=id==='bo_staff'?boSwept(game,target,prevGeom,g,s):chakramSwept(game,target,prevGeom,g,s);
+      if(!hit)continue;
+      locks[target.id]=now+lockMs;
+      if(game.weaponDeathEnabled?.())game.weaponEliminate(p,target,id,target.x,target.y);
+      else game.weaponApplyKnockback(p,target,id,typeof game.weaponHitSpeed==='function'?game.weaponHitSpeed(p,id):Number(s.contactKnockback)||320);
+      target.hitFlash=Math.max(Number(target.hitFlash)||0,10);
+      target.lastHitBy=p.id;
+      target.lastHitAt=now;
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     FLAIL
+     The ball's distance is monotonic during extension. A player contact can
+     never freeze the endpoint. It reaches maximum range unless a wall blocks
+     it first, then holds/retracts. Collision is continuously sampled with a
+     short lock instead of the old weaponHitIds one-shot gate.
+  ------------------------------------------------------------------ */
+  function continuousFlailContact(game,p,angle,kind){
+    if(!game.isHost||!alive(p)||valid(p.weapon)!=='flail')return;
+    const s=game.weaponSpec(p)||{},locks=p.weaponContactLocks||(p.weaponContactLocks={});
+    const now=performance.now(),lockMs=Math.max(.01,Number(s.contactCooldown)||.23)*1000;
+    const id='flail';
+    const g=game.weaponRenderGeometry(p);
+    const ballR=Math.max(0,Number(g?.ballRadius||s.ballRadius||14))+Math.max(0,Number(s.activeWidth||10)/2);
+    const bx=Number(g?.worldX),by=Number(g?.worldY);
+    if(!Number.isFinite(bx)||!Number.isFinite(by))return;
+    for(const target of Object.values(game.players||{})){
+      if(!target||target.id===p.id||!target.alive||target.spectator)continue;
+      if(Number(locks[target.id]||0)>now)continue;
+      const rr=Math.max(0,Number(target.radius)||26)+ballR;
+      const dx=target.x-bx,dy=target.y-by;
+      if(dx*dx+dy*dy>rr*rr)continue;
+      locks[target.id]=now+lockMs;
+      if(game.weaponDeathEnabled?.())game.weaponEliminate(p,target,id,target.x,target.y);
+      else game.weaponApplyKnockback(p,target,id,typeof game.weaponHitSpeed==='function'?game.weaponHitSpeed(p,id):Number(s.contactKnockback)||350);
+      target.hitFlash=Math.max(Number(target.hitFlash)||0,10);
+      target.lastHitBy=p.id;target.lastHitAt=now;
+    }
+  }
+
+  const previousUpdate=Game.updateWeapons?.bind(Game);
+  if(previousUpdate){
+    Game.updateWeapons=function(dt){
+      if(!this.isWeaponry?.()){return previousUpdate(dt);}
+      const oldStates=[];
+      for(const p of Object.values(this.players||{})){
+        if(!p||!alive(p))continue;
+        const id=valid(p.weapon);
+        if(thrown.has(id)&&String(p.weaponPhase||'idle')!=='idle'){
+          const g=this.weaponRenderGeometry?.(p);
+          if(g)oldStates.push({p,id,geom:{x:Number(g.worldX)||Number(p.weaponWorldX)||p.x,y:Number(g.worldY)||Number(p.weaponWorldY)||p.y,rotation:Number(g.rotation)||Number(p.weaponAttackAngle)||Number(p.weaponOrbitAngle)||0}});
+        }
+      }
+
+      /* Let every legacy update run normally except for the three weapons whose
+         final state machines/collision are authoritative here. */
+      const masks=[];
+      for(const p of Object.values(this.players||{})){
+        if(!p)continue;
+        const id=valid(p.weapon);
+        if(id==='flail'){
+          masks.push({p,weapon:p.weapon,phase:p.weaponPhase,phaseTime:p.weaponPhaseTime,alive:p.alive,spectator:p.spectator,worldX:p.weaponWorldX,worldY:p.weaponWorldY,attackAngle:p.weaponAttackAngle,orbitAngle:p.weaponOrbitAngle,activeRotation:p.weaponActiveRotation,cooldown:p.weaponCooldown,cooldownMax:p.weaponCooldownMax,hitIds:p.weaponHitIds,locks:p.weaponContactLocks,wall:p.weaponWallBlocked,flailDistance:p.flailCurrentDistance});
+          p.weapon='sword';p.weaponPhase='idle';p.weaponPhaseTime=0;p.alive=false;p.spectator=false;
+        }
+      }
+      previousUpdate(dt);
+      for(const m of masks){
+        const p=m.p;p.weapon=m.weapon;p.weaponPhase=m.phase;p.weaponPhaseTime=m.phaseTime;p.alive=m.alive;p.spectator=m.spectator;
+        p.weaponWorldX=m.worldX;p.weaponWorldY=m.worldY;p.weaponAttackAngle=m.attackAngle;p.weaponOrbitAngle=m.orbitAngle;p.weaponActiveRotation=m.activeRotation;p.weaponCooldown=m.cooldown;p.weaponCooldownMax=m.cooldownMax;p.weaponHitIds=m.hitIds;p.weaponContactLocks=m.locks;p.weaponWallBlocked=m.wall;p.flailCurrentDistance=m.flailDistance;
+      }
+
+      const now=performance.now();
+      /* Re-run Bo Staff/Chakram's existing movement state machine by taking a
+         world-space sweep from the last sampled geometry to its new geometry. */
+      for(const q of oldStates){
+        const p=q.p;if(!isThrown(p))continue;
+        thrownSweepContact(this,p,q.geom,now);
+      }
+
+      for(const p of Object.values(this.players||{}))if(p&&alive(p)&&valid(p.weapon)==='flail'&&Number(p.weaponCooldown)>0)
+        p.weaponCooldown=Math.max(0,Number(p.weaponCooldown)-dt);
+
+      /* Own the Flail movement completely. */
+      for(const p of Object.values(this.players||{})){
+        if(!p||!alive(p)||valid(p.weapon)!=='flail')continue;
+        const s=this.weaponSpec(p)||{};
+        if(String(p.weaponPhase||'idle')==='idle'){
+          p.weaponOrbitAngle=this.normalizeAngle((Number(p.weaponOrbitAngle)||0)+(Number(s.orbitSpeed)||2.70)*dt);
+          const idle=Math.max(0,Number(s.idleOuter)||74);
+          p.flailCurrentDistance=idle;
+          const a=Number(p.weaponOrbitAngle)||0;
+          p.weaponWorldX=p.x+Math.cos(a)*idle;p.weaponWorldY=p.y+Math.sin(a)*idle;
+          /* Idle Flail contact remains continuously active through the final player-contact dispatcher. */
+          this.weaponPlayerContact(p,a,s.idleInner,s.idleOuter,s.idleWidth,'idle',now);
+          continue;
+        }
+
+        p.weaponPhaseTime=(Number(p.weaponPhaseTime)||0)+dt;
+        const a=Number(p.weaponAttackAngle)||Number(p.weaponOrbitAngle)||0;
+        const idle=Math.max(0,Number(s.idleOuter)||74);
+        const maxRange=idle+Math.max(0,Number(s.strikeRange)||218);
+        if(p.weaponPhase==='extend'){
+          const duration=Math.max(1e-4,Number(s.attackExtend)||.095);
+          const t=Math.max(0,Math.min(1,(Number(p.weaponPhaseTime)||0)/duration));
+          const eased=t*t*(3-2*t);
+          const current=Math.max(idle,Number(p.flailCurrentDistance)||idle);
+          const desired=Math.max(current,idle+(maxRange-idle)*eased);
+          let allowed=desired;let blocked=false;
+          if(typeof this.weaponClampAgainstWalls==='function'){
+            const wall=this.weaponClampAgainstWalls(p,a,current,desired,Math.max(0,Number(s.ballRadius)||14));
+            if(wall&&Number.isFinite(Number(wall.distance))){allowed=Math.max(current,Math.min(desired,Number(wall.distance)||desired));blocked=!!wall.blocked;}
+          }
+          p.flailCurrentDistance=Math.max(current,Math.min(maxRange,allowed));
+          p.weaponWorldX=p.x+Math.cos(a)*p.flailCurrentDistance;p.weaponWorldY=p.y+Math.sin(a)*p.flailCurrentDistance;p.weaponWallBlocked=blocked;
+          continuousFlailContact(this,p,a,'flail');
+          if(blocked||p.flailCurrentDistance>=maxRange-0.01||p.weaponPhaseTime>=duration){
+            if(!blocked)p.flailCurrentDistance=maxRange;
+            p.weaponWorldX=p.x+Math.cos(a)*p.flailCurrentDistance;p.weaponWorldY=p.y+Math.sin(a)*p.flailCurrentDistance;
+            p.weaponPhase='active';p.weaponPhaseTime=0;p.weaponWallBlocked=blocked;
+          }
+        }else if(p.weaponPhase==='active'||p.weaponPhase==='hold'){
+          const wall=typeof this.weaponClampAgainstWalls==='function'
+            ?this.weaponClampAgainstWalls(p,a,idle,Math.max(idle,Number(p.flailCurrentDistance)||idle),Math.max(0,Number(s.ballRadius)||14))
+            :{distance:Number(p.flailCurrentDistance)||maxRange,blocked:false};
+          const current=Math.max(idle,Number(p.flailCurrentDistance)||maxRange);
+          if(wall?.blocked&&Number.isFinite(Number(wall.distance)))p.flailCurrentDistance=Math.max(idle,Math.min(current,Number(wall.distance)||current));
+          p.weaponWorldX=p.x+Math.cos(a)*p.flailCurrentDistance;p.weaponWorldY=p.y+Math.sin(a)*p.flailCurrentDistance;
+          continuousFlailContact(this,p,a,'flail');
+          if(p.weaponPhaseTime>=Math.max(0,Number(s.attackActive)||1.0)){p.weaponPhase='retract';p.weaponPhaseTime=0;}
+        }else if(p.weaponPhase==='retract'){
+          const current=Math.max(idle,Number(p.flailCurrentDistance)||idle);
+          const step=Math.max(0,Number(s.returnSpeed)||1240)*dt;
+          p.flailCurrentDistance=Math.max(idle,current-step);
+          p.weaponWorldX=p.x+Math.cos(a)*p.flailCurrentDistance;p.weaponWorldY=p.y+Math.sin(a)*p.flailCurrentDistance;
+          continuousFlailContact(this,p,a,'flail');
+          if(p.flailCurrentDistance<=idle+0.01){
+            p.flailCurrentDistance=idle;p.weaponOrbitAngle=this.normalizeAngle(a);
+            if(typeof this.endWeaponAttack==='function')this.endWeaponAttack(p);
+          }
+        }
+      }
+    };
+  }
+
+  /* Final safeguards for cooldown/stat caps accidentally reintroduced by late patches. */
+  if(WEAPONS.wand)WEAPONS.wand.cooldown=2.70;
+  if(WEAPONS.sword)WEAPONS.sword.attackCenter=107.8;
+  if(WEAPONS.axe){WEAPONS.axe.attackCenter=105.8;WEAPONS.axe.swingOuter=131.1;}
+  if(WEAPONS.scythe)WEAPONS.scythe.contactKnockback=410;
+  if(WEAPONS.firework_cannon)WEAPONS.firework_cannon.fireworkExplosionRadius=126;
+  if(WEAPONS.gyroblade)WEAPONS.gyroblade.attackCenter=79.8;
+
+  /* Final pattern helper: count can grow without an upper cap and spread is only
+     prevented from becoming negative. */
+  if(typeof setPattern==='function'&&Game.weaponPatternFinalNoCaps!==true)Game.weaponPatternFinalNoCaps=true;
+
+  Game.__plunkV86FinalWeaponBalance=true;
+})();
+</script>
 </body>
 </html>
