@@ -2004,7 +2004,7 @@ input[type=text]:hover,input[type=number]:hover,input[type=range]:hover,select:h
   <div class="panel join-browser-panel wide-panel" style="position:relative;">
     <span class="close-x" data-go="main">✕</span>
     <div class="join-browser-head">
-      <div><h2>JOIN GAME</h2><div class="subhint">Scan for active lobbies and choose one to join.</div></div>
+      <div><h2>JOIN GAME</h2><div class="subhint">Scan for active lobbies.</div></div>
       <div class="join-browser-actions"><button class="btn small primary" id="btnRefreshLobbies" type="button">SCAN FOR LOBBIES</button><button class="btn small" id="btnJoinMainMenu" type="button">MAIN MENU</button></div>
     </div>
     <div class="lobby-browser-status errbox" id="joinBrowserStatus"></div>
@@ -3910,6 +3910,14 @@ const ChatFilter = {
 };
 const Chat = {
   lastSent:0,
+  lastSentText:'',
+  lastSentAt:0,
+  markSent(text,now=Date.now()){
+    const comparable=String(text||'').trim().toLowerCase();
+    this.lastSent=now;
+    this.lastSentText=comparable;
+    this.lastSentAt=now;
+  },
 
   mutedSet(){
     if(!(Game.mutedPlayers instanceof Set)) Game.mutedPlayers=new Set(Array.isArray(Game.mutedPlayers)?Game.mutedPlayers:[]);
@@ -3959,34 +3967,36 @@ const Chat = {
     const raw=String(text||'');
     const trimmed=raw.trim();
     const now=Date.now();
-    if(now-(this.lastSent||0)<3000){
-      const remain=Math.max(0,3000-(now-(this.lastSent||0)));
+    const comparable=trimmed.toLowerCase();
+    if(comparable && comparable===String(this.lastSentText||'') && now-(this.lastSentAt||0)<3000){
+      const remain=Math.max(0,3000-(now-(this.lastSentAt||0)));
       if(typeof plunkChatCooldownNotice==='function') plunkChatCooldownNotice(remain);
       return false;
     }
-    this.lastSent=now;
     if(/^!catalog$/i.test(trimmed)){
-      if(typeof plunkHandleSphereCatalogCommand==='function') return plunkHandleSphereCatalogCommand();
+      if(typeof plunkHandleSphereCatalogCommand==='function'){ const ok=plunkHandleSphereCatalogCommand(); if(ok!==false)this.markSent(trimmed,now); return ok; }
       return false;
     }
     if(/^!open(?:\s+)([^\s]+)$/i.test(trimmed)){
       const token=trimmed.match(/^!open\s+([^\s]+)$/i)[1];
-      if(typeof plunkOpenSphereFromChat==='function') return plunkOpenSphereFromChat(token);
+      if(typeof plunkOpenSphereFromChat==='function'){ const ok=plunkOpenSphereFromChat(token); if(ok!==false)this.markSent(trimmed,now); return ok; }
       return false;
     }
     if(/^!help$/i.test(trimmed)){
       this.append({t:'chat',name:'SYSTEM',color:'#ffcf88',text:'Commands: !kick username  ·  !exit  ·  !catalog  ·  !open <code>',ts:Date.now(),system:true});
+      this.markSent(trimmed,now);
       return true;
     }
     if(Game.isHost){
       if(/^!kick(?:\s+)(.+)$/i.test(trimmed)){
         const wanted=trimmed.replace(/^!kick\s+/i,'').trim().toLowerCase();
         const match=Object.values(Game.players||{}).find(p=>p && p.id!==Game.myId && String(p.name||'').trim().toLowerCase()===wanted);
-        if(match){ Lobby.kickPlayerCommand(match.id); this.append({t:'chat',name:'SYSTEM',color:'#ff8f72',text:`Kicked ${match.name}.`,ts:Date.now()}); return true; }
-        this.append({t:'chat',name:'SYSTEM',color:'#ffcf88',text:`Player not found: ${trimmed.replace(/^!kick\s+/i,'').trim()}`,ts:Date.now()}); return true;
+        if(match){ Lobby.kickPlayerCommand(match.id); this.append({t:'chat',name:'SYSTEM',color:'#ff8f72',text:`Kicked ${match.name}.`,ts:Date.now()}); this.markSent(trimmed,now); return true; }
+        this.append({t:'chat',name:'SYSTEM',color:'#ffcf88',text:`Player not found: ${trimmed.replace(/^!kick\s+/i,'').trim()}`,ts:Date.now()}); this.markSent(trimmed,now); return true;
       }
       if(trimmed.toLowerCase()==='!exit' && ['playing','countdown','roundResults','results'].includes(Game.state)){
         Lobby.exitMatchToLobby();
+        this.markSent(trimmed,now);
         return true;
       }
     }
@@ -3995,6 +4005,7 @@ const Chat = {
     this.append(msg);
     if(NetworkManager.isHost) NetworkManager.broadcast(msg, true);
     else NetworkManager.sendToHost(msg, true);
+    this.markSent(comparable,now);
     return true;
   },
 
@@ -4212,6 +4223,9 @@ const GameModes = {
 /* ---------------------------- WEAPONRY ----------------------------
    Isolated player-only combat. Weapons never participate in map/platform
    collision. The host owns knockback, elimination and projectile hits. */
+/* Global multiplier applied to every weapon knockback sink (melee/projectile hits,
+   bomb blasts, firework/potion area pushes). Tune this one number to rescale all weapons. */
+const WEAPON_KNOCKBACK_SCALE=1.3;
 const WEAPONS={
   // Idle placement deliberately starts outside the normal player radius so the
   // weapons visibly float around the character instead of clipping through it.
@@ -4221,7 +4235,7 @@ const WEAPONS={
   wand:{label:'Wand',orbitSpeed:2.55,cooldown:2.25,contactCooldown:.24,
     idleInner:34,idleOuter:78,idleWidth:7,castTime:.16,projectileSpeed:880,projectileRange:560,
     projectileRadius:6,contactKnockback:300},
-  bo_staff:{label:'Bo Staff',orbitSpeed:2.05,cooldown:9.70,contactCooldown:.22,
+  bo_staff:{label:'Bo Staff',orbitSpeed:2.05,cooldown:7.50,contactCooldown:.22,
     idleInner:42,idleOuter:114,idleWidth:7,attackExtend:.24,attackHold:1.85,attackReturn:.46,returnSpeed:420,
     staffLength:92,idleCenter:78,throwStart:78,throwEnd:224,activeWidth:7.2,contactKnockback:370,spinSpeed:12.5},
   axe:{label:'Shovel',orbitSpeed:3.00,cooldown:3.15,contactCooldown:.21,
@@ -4240,30 +4254,30 @@ const WEAPONS={
     idleCenter:56,attackCenter:76,bladeLength:64,activeWidth:9,spinSpeed:7.6,contactKnockback:410},
   lance:{label:'Dagger',orbitSpeed:3.05,cooldown:3.35,contactCooldown:.17,
     idleInner:31,idleOuter:80,idleWidth:7,attackExtend:.035,attackActive:.09,attackRetract:.07,
-    idleCenter:54,attackCenter:94,bladeLength:58,activeWidth:8,lungeSpeed:1850,lungeTime:.15,contactKnockback:500},
+    idleCenter:54,attackCenter:94,bladeLength:58,activeWidth:8,lungeSpeed:1850,lungeTime:.15,contactKnockback:440},
   twinblades:{label:'Twin Blades',orbitSpeed:3.35,cooldown:1.85,contactCooldown:.19,
     idleInner:30,idleOuter:77,idleWidth:6,attackExtend:.07,attackActive:.12,attackRetract:.10,
-    idleCenter:55,attackCenter:87,bladeLength:45,activeWidth:7.2,twinOffset:.25,twinAttackOffset:.43,contactKnockback:285},
+    idleCenter:55,attackCenter:87,bladeLength:45,activeWidth:7.2,twinOffset:.25,twinAttackOffset:.43,contactKnockback:335},
   anchor:{label:'Hammer',orbitSpeed:1.90,cooldown:4.60,contactCooldown:.24,
     idleInner:36,idleOuter:81,idleWidth:7,attackExtend:.12,attackActive:.18,attackRetract:.22,
     idleCenter:58,attackCenter:94,anchorLength:68,anchorHeadRadius:11,anchorChainWidth:6,activeWidth:8,contactKnockback:500},
   gyroblade:{label:'Gyroblade',orbitSpeed:3.25,cooldown:2.90,contactCooldown:.18,
     idleInner:38,idleOuter:82,idleWidth:6,attackExtend:.08,attackActive:.30,attackRetract:.10,
-    idleCenter:61,attackCenter:76,gyroRadius:15,gyroBladeReach:1.28,activeWidth:7,gyroSpinSpeed:18,contactKnockback:315},
-  bombardier:{label:'Bombardier',orbitSpeed:2.15,cooldown:3.80,contactCooldown:.24,
+    idleCenter:61,attackCenter:76,gyroRadius:15,gyroBladeReach:1.28,activeWidth:8,gyroSpinSpeed:18,contactKnockback:350},
+  bombardier:{label:'Bombardier',orbitSpeed:2.15,cooldown:1.20,contactCooldown:.24,
     idleInner:33,idleOuter:77,idleWidth:8,castTime:.13,projectileSpeed:560,projectileRange:440,
     projectileRadius:8,bombGravity:520,bombLob:210,bombBlastRadius:56,bombKnockback:325,contactKnockback:260},
-  katana:{label:'Katana',orbitSpeed:3.55,cooldown:3.55,contactCooldown:.17,
+  katana:{label:'Katana',orbitSpeed:3.55,cooldown:3.55,contactCooldown:.20,
     idleInner:27,idleOuter:76,idleWidth:7,attackExtend:.025,attackActive:.10,attackRetract:.075,
     idleCenter:41,attackCenter:52,bladeLength:114,activeWidth:9,swingInner:27,swingOuter:82,
     swingStart:-1.30,swingEnd:1.30,slashSpeed:1040,slashRange:170,slashRadius:9,slashLength:60,contactKnockback:465},
-  firework_cannon:{label:'Firework Cannon',orbitSpeed:1.85,cooldown:5.00,contactCooldown:.24,
+  firework_cannon:{label:'Firework Cannon',orbitSpeed:1.85,cooldown:6.00,contactCooldown:.24,
     idleInner:20,idleOuter:64,idleWidth:7,idleCenter:42,castTime:.13,projectileSpeed:320,projectileRange:760,projectileRadius:18,
-    fireworkAcceleration:1400,fireworkMaxSpeed:1800,fireworkLife:4.2,fireworkExplosionRadius:180,contactKnockback:780},
+    fireworkAcceleration:1400,fireworkMaxSpeed:1800,fireworkLife:4.2,fireworkExplosionRadius:180,contactKnockback:620},
   potion:{label:'Potion',orbitSpeed:2.10,cooldown:6.75,contactCooldown:.26,
     idleInner:29,idleOuter:68,idleWidth:7,idleCenter:50,castTime:.16,projectileSpeed:590,projectileRange:560,projectileRadius:11,
     potionGravity:2050,potionLob:345,potionGoopRadius:60,potionGoopLife:4.0,contactKnockback:360},
-  pitchfork:{label:'Pitchfork',orbitSpeed:2.75,cooldown:5.50,contactCooldown:.14,
+  pitchfork:{label:'Pitchfork',orbitSpeed:2.75,cooldown:6.50,contactCooldown:.18,
     idleInner:34,idleOuter:88,idleWidth:8,attackActive:1.00,idleCenter:60,attackCenter:72,
     pitchforkLength:72,activeWidth:9.5,contactKnockback:405}
 };
@@ -6325,7 +6339,7 @@ const Game = {
     // Optional weapon flinging scales naturally with the actual weapon speed:
     // fast-moving attacks impart substantially more launch than slow swings.
     const flingBonus=this.weaponFlingEnabled()?Math.min(900,speed*0.34)*(this.matchSettings.kb||1):0;
-    const k=base+flingBonus;
+    const k=(base+flingBonus)*WEAPON_KNOCKBACK_SCALE;
     victim.vx+=dx/dist*k; victim.vy+=dy/dist*k*.72-40; victim.grounded=false; victim.hitFlash=4; victim.lastHitBy=attacker.id; victim.lastHitAt=performance.now();
     if(this.matchSettings?.combo) this.registerHit(attacker.id,victim.id,victim.x,victim.y,kind);
     this.weaponImpactFx(victim.x,victim.y,kind,true);
@@ -8104,8 +8118,8 @@ const Game = {
           const vaN=a.vx*nx+a.vy*ny;
           const vbN=b.vx*nx+b.vy*ny;
           // Snapshot each player's velocity before this collision's impulse so
-          // the GET PLUNK'D indicator can be assigned to the player who actually
-          // absorbs the larger total momentum change.
+          // Store the player who absorbed the larger total momentum change for any
+          // systems that may inspect collision data; no UI is attached to this.
           const preImpactAVx=a.vx, preImpactAVy=a.vy;
           const preImpactBVx=b.vx, preImpactBVy=b.vy;
           const dashEnergyMultiplier=1.35;
@@ -8197,7 +8211,7 @@ const Game = {
 
             // Determine who tanked the most momentum from the complete velocity
             // change caused by this collision (base impulse, density bonus, Smash,
-            // and combo knockback all included). Only that player gets GET PLUNK'D.
+            // and combo knockback all included).
             const tankedA=Math.hypot(a.vx-preImpactAVx,a.vy-preImpactAVy);
             const tankedB=Math.hypot(b.vx-preImpactBVx,b.vy-preImpactBVy);
             this._v75LastImpactVictimId=(tankedA>=tankedB?a.id:b.id);
@@ -15335,69 +15349,69 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     {id:'cool10',rarity:'common',name:'Fast Hands',effect:'−8% COOLDOWN',desc:'Recover from attacks faster.',key:'cooldownPct',value:.08},
     {id:'size08',rarity:'common',name:'Light Build',effect:'+6% SIZE',desc:'Your weapon becomes slightly larger.',key:'sizePct',value:.06},
     {id:'size10',rarity:'common',name:'Reinforced',effect:'+8% SIZE',desc:'Your weapon becomes noticeably sturdier.',key:'sizePct',value:.08},
-    {id:'hit08',rarity:'common',name:'Broad Edge',effect:'+6% HITBOX',desc:'Your weapon gets a little easier to connect with.',key:'hitboxPct',value:.06},
-    {id:'hit12',rarity:'common',name:'Wide Edge',effect:'+8% HITBOX',desc:'A modest contact-area increase.',key:'hitboxPct',value:.08},
-    {id:'speed10',rarity:'common',name:'Light Mechanism',effect:'+6% WEAPON SPEED',desc:'Projectiles and returning weapons move faster.',key:'speedPct',value:.06},
+    {id:'hit08',rarity:'common',name:'Broad Edge',effect:'+6% SIZE',desc:'Your weapon becomes a little larger in both appearance and contact area.',key:'sizePct',value:.06},
+    {id:'hit12',rarity:'common',name:'Wide Edge',effect:'+8% SIZE',desc:'Your weapon becomes larger in both appearance and contact area.',key:'sizePct',value:.08},
+    {id:'speed10',rarity:'common',name:'Light Mechanism',effect:'−6% ATTACK TIME',desc:'Your weapon starts, moves, and returns faster.',key:'attackSpeedPct',value:-.06},
     {id:'kb10',rarity:'common',name:'Firm Impact',effect:'+7% KNOCKBACK',desc:'Successful hits launch opponents a little harder.',key:'knockbackPct',value:.07},
 
     // Uncommon: useful build direction without huge spikes.
     {id:'range18',rarity:'uncommon',name:'Extended',effect:'+12% RANGE',desc:'Push your weapon farther into space.',key:'rangePct',value:.12},
     {id:'cool16',rarity:'uncommon',name:'Fast Mechanism',effect:'−12% COOLDOWN',desc:'Your attack comes back noticeably sooner.',key:'cooldownPct',value:.12},
     {id:'size18',rarity:'uncommon',name:'Heavy Build',effect:'+12% SIZE',desc:'Bigger visuals and a slightly larger weapon.',key:'sizePct',value:.12},
-    {id:'hit18',rarity:'uncommon',name:'Heavy Edge',effect:'+12% HITBOX',desc:'More forgiving contact.',key:'hitboxPct',value:.12},
-    {id:'speed18',rarity:'uncommon',name:'Overclock',effect:'+12% WEAPON SPEED',desc:'Thrown and returning weapons move faster.',key:'speedPct',value:.12},
+    {id:'hit18',rarity:'uncommon',name:'Heavy Edge',effect:'+12% SIZE',desc:'A larger weapon with more forgiving contact.',key:'sizePct',value:.12},
+    {id:'speed18',rarity:'uncommon',name:'Overclock',effect:'−12% ATTACK TIME',desc:'Your weapon starts, moves, and returns faster.',key:'attackSpeedPct',value:-.12},
     {id:'kb15',rarity:'uncommon',name:'Sharpened Force',effect:'+12% KNOCKBACK',desc:'Hits throw opponents harder.',key:'knockbackPct',value:.12},
-    {id:'attack12',rarity:'uncommon',name:'Quick Swing',effect:'−10% ATTACK TIME',desc:'Weapon wind-up and recovery finish faster.',key:'attackSpeedPct',value:.10},
+    {id:'attack12',rarity:'uncommon',name:'Quick Swing',effect:'−10% ATTACK TIME',desc:'Weapon wind-up and recovery finish faster.',key:'attackSpeedPct',value:-.10},
     {id:'balanced18',rarity:'uncommon',name:'Balanced Core',effect:'+8% RANGE · +8% SIZE',desc:'A clean two-stat upgrade with no downside.',key:'multi',value:{rangePct:.08,sizePct:.08}},
 
     // Rare: strong specialization.
     {id:'range25',rarity:'rare',name:'Long Weapon',effect:'+18% RANGE',desc:'A strong reach increase.',key:'rangePct',value:.18},
     {id:'cool25',rarity:'rare',name:'Rapid Mechanism',effect:'−16% COOLDOWN',desc:'A strong cooldown reduction.',key:'cooldownPct',value:.16},
     {id:'size28',rarity:'rare',name:'Oversized Weapon',effect:'+18% SIZE',desc:'Your weapon becomes more imposing.',key:'sizePct',value:.18},
-    {id:'hit28',rarity:'rare',name:'Wide Swing',effect:'+18% HITBOX',desc:'A solid contact upgrade that also enlarges the weapon.',key:'hitboxPct',value:.18},
-    {id:'speed28',rarity:'rare',name:'Rapid Fire',effect:'+18% WEAPON SPEED',desc:'Thrown and returning weapons become faster.',key:'speedPct',value:.18},
+    {id:'hit28',rarity:'rare',name:'Wide Swing',effect:'+18% SIZE',desc:'A solid weapon-size and contact upgrade.',key:'sizePct',value:.18},
+    {id:'speed28',rarity:'rare',name:'Rapid Fire',effect:'−18% ATTACK TIME',desc:'Your weapon cycles through its motion faster.',key:'attackSpeedPct',value:-.18},
     {id:'kb28',rarity:'rare',name:'Brutal Force',effect:'+18% KNOCKBACK',desc:'Turn successful hits into stronger launches.',key:'knockbackPct',value:.18},
-    {id:'attack22',rarity:'rare',name:'Quick Cycle',effect:'−16% ATTACK TIME',desc:'Attack animations complete faster.',key:'attackSpeedPct',value:.16},
+    {id:'attack22',rarity:'rare',name:'Quick Cycle',effect:'−16% ATTACK TIME',desc:'Attack animations complete faster.',key:'attackSpeedPct',value:-.16},
     {id:'reachForce',rarity:'rare',name:'Hunter',effect:'+14% RANGE · +12% KNOCKBACK',desc:'Reach farther and make clean hits matter more.',key:'multi',value:{rangePct:.14,knockbackPct:.12}},
-    {id:'denseEdge',rarity:'rare',name:'Dense Edge',effect:'+14% SIZE · +12% HITBOX',desc:'A visibly larger weapon with more forgiving contact.',key:'multi',value:{sizePct:.14,hitboxPct:.12}},
-    {id:'swiftEdge',rarity:'rare',name:'Swift Edge',effect:'−14% COOLDOWN · +12% WEAPON SPEED',desc:'Cycle attacks faster while improving weapon movement.',key:'multi',value:{cooldownPct:.14,speedPct:.12}},
+    {id:'denseEdge',rarity:'rare',name:'Dense Edge',effect:'+14% SIZE',desc:'A larger, more forgiving weapon.',key:'multi',value:{sizePct:.14}},
+    {id:'swiftEdge',rarity:'rare',name:'Swift Edge',effect:'−14% COOLDOWN · −12% ATTACK TIME',desc:'Cycle attacks faster and move through the attack motion faster.',key:'multi',value:{cooldownPct:.14,attackSpeedPct:-.12}},
 
     // Epic: dramatic, but not runaway, upgrades.
     {id:'range40',rarity:'epic',name:'Giant Reach',effect:'+28% RANGE',desc:'A major reach upgrade suited to long-control weapons.',key:'rangePct',value:.28},
     {id:'cool38',rarity:'epic',name:'Hypercharge',effect:'−25% COOLDOWN',desc:'Your weapon cycles much more quickly.',key:'cooldownPct',value:.25},
     {id:'size42',rarity:'epic',name:'Colossal',effect:'+30% SIZE',desc:'A large increase to weapon presence.',key:'sizePct',value:.30},
-    {id:'hit42',rarity:'epic',name:'Massive Contact',effect:'+28% HITBOX',desc:'Your weapon becomes dramatically easier to connect with.',key:'hitboxPct',value:.28},
-    {id:'speed35',rarity:'epic',name:'Overdrive',effect:'+26% WEAPON SPEED',desc:'Faster projectiles and returning weapons.',key:'speedPct',value:.26},
-    {id:'attack30',rarity:'epic',name:'Flash Strike',effect:'−22% ATTACK TIME',desc:'Your attack timing becomes sharply faster.',key:'attackSpeedPct',value:.22},
+    {id:'hit42',rarity:'epic',name:'Massive Contact',effect:'+28% SIZE',desc:'Your weapon becomes dramatically easier to connect with.',key:'sizePct',value:.28},
+    {id:'speed35',rarity:'epic',name:'Overdrive',effect:'−26% ATTACK TIME',desc:'Your weapon moves through its attack cycle much faster.',key:'attackSpeedPct',value:-.26},
+    {id:'attack30',rarity:'epic',name:'Flash Strike',effect:'−22% ATTACK TIME',desc:'Your attack timing becomes sharply faster.',key:'attackSpeedPct',value:-.22},
     {id:'titanForce',rarity:'epic',name:'Titan Force',effect:'+18% SIZE · +18% KNOCKBACK',desc:'A larger weapon backed by stronger impacts.',key:'multi',value:{sizePct:.18,knockbackPct:.18}},
-    {id:'predator',rarity:'epic',name:'Predator',effect:'+20% RANGE · +18% WEAPON SPEED',desc:'A fast, far-reaching weapon build.',key:'multi',value:{rangePct:.20,speedPct:.18}},
-    {id:'stormCycle',rarity:'epic',name:'Storm Cycle',effect:'−22% COOLDOWN · −18% ATTACK TIME',desc:'A build centered on frequent attacks.',key:'multi',value:{cooldownPct:.22,attackSpeedPct:.18}},
+    {id:'predator',rarity:'epic',name:'Predator',effect:'+20% RANGE · −18% ATTACK TIME',desc:'A fast, far-reaching weapon build.',key:'multi',value:{rangePct:.20,attackSpeedPct:-.18}},
+    {id:'stormCycle',rarity:'epic',name:'Storm Cycle',effect:'−22% COOLDOWN · −18% ATTACK TIME',desc:'A build centered on frequent attacks.',key:'multi',value:{cooldownPct:.22,attackSpeedPct:-.18}},
 
     // Legendary: powerful build-defining picks.
-    {id:'masterwork',rarity:'legendary',name:'Masterwork',effect:'+22% RANGE · +18% SIZE · +10% HITBOX',desc:'A premium all-around weapon enhancement.',key:'multi',value:{rangePct:.22,sizePct:.18,hitboxPct:.10}},
-    {id:'executioner',rarity:'legendary',name:'Executioner',effect:'+28% KNOCKBACK · +20% HITBOX',desc:'A finishing-focused upgrade with stronger, easier hits.',key:'multi',value:{knockbackPct:.28,hitboxPct:.20}},
-    {id:'timebreaker',rarity:'legendary',name:'Timebreaker',effect:'−30% COOLDOWN · +16% WEAPON SPEED',desc:'Very fast weapon cycling with faster motion.',key:'multi',value:{cooldownPct:.30,speedPct:.16}},
-    {id:'apex',rarity:'legendary',name:'Apex Arsenal',effect:'+20% RANGE · +18% SIZE · +20% WEAPON SPEED',desc:'A high-powered three-stat weapon transformation.',key:'multi',value:{rangePct:.20,sizePct:.18,speedPct:.20}},
-    {id:'juggernaut',rarity:'legendary',name:'Juggernaut',effect:'+25% SIZE · +22% KNOCKBACK · +12% HITBOX',desc:'A heavy weapon built for powerful connections.',key:'multi',value:{sizePct:.25,knockbackPct:.22,hitboxPct:.12}},
+    {id:'masterwork',rarity:'legendary',name:'Masterwork',effect:'+22% RANGE · +18% SIZE',desc:'A premium all-around weapon enhancement.',key:'multi',value:{rangePct:.22,sizePct:.18}},
+    {id:'executioner',rarity:'legendary',name:'Executioner',effect:'+28% KNOCKBACK · +20% SIZE',desc:'A finishing-focused upgrade with stronger, easier hits.',key:'multi',value:{knockbackPct:.28,sizePct:.20}},
+    {id:'timebreaker',rarity:'legendary',name:'Timebreaker',effect:'−30% COOLDOWN · −16% ATTACK TIME',desc:'Very fast weapon cycling with faster motion.',key:'multi',value:{cooldownPct:.30,attackSpeedPct:-.16}},
+    {id:'apex',rarity:'legendary',name:'Apex Arsenal',effect:'+20% RANGE · +18% SIZE · −20% ATTACK TIME',desc:'A high-powered three-stat weapon transformation.',key:'multi',value:{rangePct:.20,sizePct:.18,attackSpeedPct:-.20}},
+    {id:'juggernaut',rarity:'legendary',name:'Juggernaut',effect:'+25% SIZE · +22% KNOCKBACK',desc:'A heavy weapon built for powerful connections.',key:'multi',value:{sizePct:.25,knockbackPct:.22}},
 
     // Cursed: stronger spikes with clear, meaningful drawbacks.
-    {id:'glassCannon',rarity:'cursed',name:'Glass Cannon',effect:'+38% RANGE · +25% WEAPON SPEED · +18% COOLDOWN',desc:'Reach and weapon speed surge, but attacks recover more slowly.',key:'multi',value:{rangePct:.38,speedPct:.25,cooldownPct:-.18}},
-    {id:'bloodRush',rarity:'cursed',name:'Blood Rush',effect:'−25% COOLDOWN · −28% ATTACK TIME · −18% SIZE',desc:'Attack rapidly, but the weapon becomes smaller.',key:'multi',value:{cooldownPct:.25,attackSpeedPct:.28,sizePct:-.18}},
-    {id:'brittleEdge',rarity:'cursed',name:'Brittle Edge',effect:'+35% HITBOX · +20% SIZE · −24% WEAPON SPEED',desc:'A large, forgiving weapon that moves substantially slower.',key:'multi',value:{hitboxPct:.35,sizePct:.20,speedPct:-.24}},
-    {id:'heavyReach',rarity:'cursed',name:'Heavy Reach',effect:'+45% RANGE · +25% SIZE · −20% WEAPON SPEED',desc:'Massive reach and bulk at the cost of weapon speed.',key:'multi',value:{rangePct:.45,sizePct:.25,speedPct:-.20}},
-    {id:'backlash',rarity:'cursed',name:'Backlash',effect:'+36% KNOCKBACK · +22% HITBOX · −22% RANGE',desc:'Every hit is brutal, but you must fight closer.',key:'multi',value:{knockbackPct:.36,hitboxPct:.22,rangePct:-.22}},
-    {id:'overloaded',rarity:'cursed',name:'Overloaded Core',effect:'−28% COOLDOWN · +32% WEAPON SPEED · −20% SIZE',desc:'Extreme weapon speed at the cost of bulk.',key:'multi',value:{cooldownPct:.28,speedPct:.32,sizePct:-.20}},
-    {id:'recklessEdge',rarity:'cursed',name:'Reckless Edge',effect:'+32% HITBOX · +26% KNOCKBACK · +22% COOLDOWN',desc:'Hits are stronger and easier, but recovery takes longer.',key:'multi',value:{hitboxPct:.32,knockbackPct:.26,cooldownPct:-.22}},
-    {id:'fragileVelocity',rarity:'cursed',name:'Fragile Velocity',effect:'+38% WEAPON SPEED · −20% ATTACK TIME · −25% KNOCKBACK',desc:'A lightning-fast weapon that loses some impact.',key:'multi',value:{speedPct:.38,attackSpeedPct:.20,knockbackPct:-.25}},
-    {id:'longBurden',rarity:'cursed',name:'Long Burden',effect:'+55% RANGE · −20% SIZE · +18% COOLDOWN',desc:'Extreme reach with a smaller weapon and slower recovery.',key:'multi',value:{rangePct:.55,sizePct:-.20,cooldownPct:-.18}},
+    {id:'glassCannon',rarity:'cursed',name:'Glass Cannon',effect:'+38% RANGE · −25% ATTACK TIME · +18% COOLDOWN',desc:'Reach and attack speed surge, but attacks recover more slowly.',key:'multi',value:{rangePct:.38,attackSpeedPct:-.25,cooldownPct:-.18}},
+    {id:'bloodRush',rarity:'cursed',name:'Blood Rush',effect:'−25% COOLDOWN · −28% ATTACK TIME · −18% SIZE',desc:'Attack rapidly, but the weapon becomes smaller.',key:'multi',value:{cooldownPct:.25,attackSpeedPct:-.28,sizePct:-.18}},
+    {id:'brittleEdge',rarity:'cursed',name:'Brittle Edge',effect:'+30% SIZE · −18% ATTACK TIME · +26% COOLDOWN',desc:'A large, forgiving weapon that attacks faster but takes longer to recover.',key:'multi',value:{sizePct:.30,attackSpeedPct:-.18,cooldownPct:-.26}},
+    {id:'heavyReach',rarity:'cursed',name:'Heavy Reach',effect:'+38% RANGE · +20% SIZE · −14% ATTACK TIME · +32% COOLDOWN',desc:'Massive reach and bulk with faster attack timing, but a much longer cooldown.',key:'multi',value:{rangePct:.38,sizePct:.20,attackSpeedPct:-.14,cooldownPct:-.32}},
+    {id:'backlash',rarity:'cursed',name:'Backlash',effect:'+36% KNOCKBACK · +22% SIZE · −22% RANGE',desc:'Every hit is brutal, but you must fight closer.',key:'multi',value:{knockbackPct:.36,sizePct:.22,rangePct:-.22}},
+    {id:'overloaded',rarity:'cursed',name:'Overloaded Core',effect:'−28% COOLDOWN · −32% ATTACK TIME · −20% SIZE',desc:'Extreme attack speed at the cost of bulk.',key:'multi',value:{cooldownPct:.28,attackSpeedPct:-.32,sizePct:-.20}},
+    {id:'recklessEdge',rarity:'cursed',name:'Reckless Edge',effect:'+32% SIZE · +26% KNOCKBACK · +22% COOLDOWN',desc:'Hits are stronger and easier, but recovery takes longer.',key:'multi',value:{sizePct:.32,knockbackPct:.26,cooldownPct:-.22}},
+    {id:'fragileVelocity',rarity:'cursed',name:'Fragile Velocity',effect:'−36% ATTACK TIME · −24% KNOCKBACK · +12% COOLDOWN · +12% RANGE',desc:'A lightning-fast weapon with weaker impacts and a longer cooldown, but extra reach.',key:'multi',value:{attackSpeedPct:-.36,knockbackPct:-.24,cooldownPct:-.12,rangePct:.12}},
+    {id:'longBurden',rarity:'cursed',name:'Long Burden',effect:'+50% RANGE · −18% SIZE · −8% ATTACK TIME · +20% COOLDOWN',desc:'Extreme reach with a smaller weapon and faster attack timing, but longer recovery.',key:'multi',value:{rangePct:.50,sizePct:-.18,attackSpeedPct:-.08,cooldownPct:-.20}},
 
     // Pattern cards: extra, visibly angled attacks rather than stacked copies.
     {id:'coneBurst',rarity:'rare',name:'Cone Burst',effect:'EVERY 2ND ATTACK FIRES 2 EXTRA WEAPONS',desc:'Two extra attacks fan out at equal angles around the main attack.',key:'patternCone',value:{patternConeCount:2,patternConeSpread:.28,patternConeInterval:2}},
-    {id:'tripleFan',rarity:'legendary',name:'Triple Fan',effect:'EVERY 2ND ATTACK FIRES 3 EXTRA WEAPONS',desc:'Three extra attacks spread across a wider fan without stacking.',key:'patternCone',value:{patternConeCount:3,patternConeSpread:.24,patternConeInterval:2}},
-    {id:'heavyWeapon',rarity:'uncommon',name:'Heavy Weapon',effect:'+28% SIZE · +22% KNOCKBACK · −18% WEAPON SPEED',desc:'A substantially larger weapon with heavier impacts.',key:'multi',value:{sizePct:.28,knockbackPct:.22,speedPct:-.18}},
+    {id:'tripleFan',rarity:'legendary',name:'Triple Fan',effect:'EVERY 3RD ATTACK FIRES 3 EXTRA WEAPONS',desc:'Three extra attacks spread across a wider fan without stacking.',key:'patternCone',value:{patternConeCount:3,patternConeSpread:.24,patternConeInterval:3}},
+    {id:'heavyWeapon',rarity:'uncommon',name:'Heavy Weapon',effect:'+10% SIZE · +8% KNOCKBACK · −2% ATTACK TIME',desc:'A moderately heavier weapon with stronger impacts and a small attack-time improvement.',key:'multi',value:{sizePct:.10,knockbackPct:.08,attackSpeedPct:-.02}},
     {id:'rapidFire',rarity:'epic',name:'Rapid Fire',effect:'−28% COOLDOWN · −16% RANGE · −12% SIZE',desc:'Attack constantly, trading reach and bulk for speed.',key:'multi',value:{cooldownPct:.28,rangePct:-.16,sizePct:-.12}},
-    {id:'longHandle',rarity:'rare',name:'Long Handle',effect:'+32% RANGE · +12% SIZE',desc:'Your weapon reaches farther without becoming unwieldy.',key:'multi',value:{rangePct:.32,sizePct:.12}},
-    {id:'compoundInterest',rarity:'legendary',name:'Compound Interest',effect:'EVERY 3RD PICK IS 35% STRONGER',desc:'Every third, sixth, ninth, and later third pick gains a 35% bonus.',key:'compound',value:1.35}
+    {id:'longHandle',rarity:'rare',name:'Long Handle',effect:'+26% RANGE · +10% SIZE',desc:'Your weapon reaches farther without becoming unwieldy.',key:'multi',value:{rangePct:.26,sizePct:.10}},
+    {id:'compoundInterest',rarity:'legendary',name:'Compound Interest',effect:'EVERY 3RD PICK IS 30% STRONGER',desc:'Every third, sixth, ninth, and later third pick gains a 30% bonus.',key:'compound',value:1.30}
   ];
 
   /* Condense legacy Size+Hitbox and Attack Time+Weapon Speed card data into the
@@ -15455,6 +15469,53 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
     }
   })();
 
+  /* Live-card finalization: this runs inside the closure that owns ROGUE_CARDS.
+     Later compatibility scripts cannot see this lexical array, so all semantic
+     normalization that affects the actual draft pool belongs here. */
+  (function finalizeLiveRogueCards(){
+    const labels={rangePct:'RANGE',cooldownPct:'COOLDOWN',sizePct:'SIZE',attackSpeedPct:'ATTACK TIME',knockbackPct:'KNOCKBACK'};
+    const sign=(k,v)=>{const n=Number(v)||0;const neg=k==='cooldownPct'?n>0:n<0;return neg?'−':'+';};
+    const rebuild=v=>[['rangePct','RANGE'],['cooldownPct','COOLDOWN'],['sizePct','SIZE'],['attackSpeedPct','ATTACK TIME'],['knockbackPct','KNOCKBACK']]
+      .filter(([k])=>Math.abs(Number(v?.[k])||0)>.0005)
+      .map(([k,label])=>`${sign(k,v[k])}${Math.round(Math.abs(Number(v[k])||0)*100)}% ${label}`).join(' · ');
+    for(const c of ROGUE_CARDS){
+      if(!c)continue;
+      if(c.key==='hitboxPct'){
+        const v=Math.abs(Number(c.value)||0);
+        c.key='sizePct'; c.value=v;
+      }
+      if(c.key==='speedPct'){
+        const v=Math.abs(Number(c.value)||0);
+        c.key='attackSpeedPct'; c.value=-v;
+      }
+      if(c.key==='multi'&&c.value&&typeof c.value==='object'){
+        const v=c.value;
+        if(Number.isFinite(Number(v.hitboxPct))&&Math.abs(Number(v.hitboxPct))>.0005){
+          const h=Math.abs(Number(v.hitboxPct)||0),z=Math.abs(Number(v.sizePct)||0);
+          v.sizePct=Math.max(h,z)*(Number(v.sizePct||v.hitboxPct)>=0?1:-1);
+          delete v.hitboxPct;
+        }
+        if(Number.isFinite(Number(v.speedPct))&&Math.abs(Number(v.speedPct))>.0005){
+          const old=Math.abs(Number(v.speedPct)||0),at=Math.abs(Number(v.attackSpeedPct)||0);
+          v.attackSpeedPct=-(Math.max(old,at));
+          delete v.speedPct;
+        }
+      }
+      if(c.key==='attackSpeedPct')c.value=-Math.abs(Number(c.value)||0);
+      if(c.key==='multi'&&c.value&&typeof c.value==='object'&&Number.isFinite(Number(c.value.attackSpeedPct))){
+        c.value.attackSpeedPct=-Math.abs(Number(c.value.attackSpeedPct));
+      }
+      if(c.key==='patternCone'&&c.id==='tripleFan'){
+        c.value.patternConeInterval=3;
+        c.effect='EVERY 3RD ATTACK FIRES 3 EXTRA WEAPONS';
+        c.desc='Three extra attacks spread across a wider fan without stacking.';
+      }
+      if(c.key==='compound'){c.value=1.30;c.effect='EVERY 3RD PICK IS 30% STRONGER';c.desc='Every third, sixth, ninth, and later third pick gains a 30% bonus.';}
+      if(c.key==='multi'||c.key==='attackSpeedPct'||c.key==='sizePct'||c.key==='rangePct'||c.key==='cooldownPct'||c.key==='knockbackPct')
+        c.effect=rebuild(c.key==='multi'?(c.value||{}):{[c.key]:c.value});
+    }
+  })();
+
   const rarityWeight={common:54,uncommon:28,rare:12,epic:5,legendary:1,cursed:3};
   function weightedCard(excluded,player){
     const patternCompatible=new Set(['sword','wand','axe','scythe','lance','katana','twinblades']);
@@ -15487,7 +15548,7 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
       const v=c.value||{};
       return `Every ${Number(v.patternConeInterval)||2}nd attack adds ${Number(v.patternConeCount)||0} extra attacks in a cone.`;
     }
-    if(c.key==='compound')return 'Every 3rd pick is 35% stronger.';
+    if(c.key==='compound')return `Every 3rd pick is ${Math.round((Number(c.value)||1)*100-100)}% stronger.`;
     if(c.key==='multi'){
       const labels={rangePct:'range',cooldownPct:'cooldown',sizePct:'size',hitboxPct:'hitbox',speedPct:'speed',attackSpeedPct:'wind up time',knockbackPct:'knockback'};
       const bits=[];
@@ -16270,7 +16331,7 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
 
   Game.weaponBombardierExplode=function(q,x,y){
     const owner=this.players[q.ownerId];if(!owner)return;
-    const blast=Math.max(20,Number(q.bombBlastRadius)||56),baseK=Math.max(60,Number(q.bombKnockback)||325)*(this.matchSettings.kb||1);
+    const blast=Math.max(20,Number(q.bombBlastRadius)||56),baseK=Math.max(60,Number(q.bombKnockback)||325)*(this.matchSettings.kb||1)*WEAPON_KNOCKBACK_SCALE;
     for(const target of Object.values(this.players)){
       if(!target||!target.alive||target.spectator||target.id===owner.id)continue;
       const dx=target.x-x,dy=target.y-y,dist=Math.hypot(dx,dy);
@@ -19091,41 +19152,6 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 
 
 <style id="plunk-v65-qol-styles">
-#plunkMomentIndicator{
-  position:fixed;
-  left:50%;
-  top:18%;
-  z-index:9100;
-  transform:translate(-50%,-10px) scale(.84) rotate(-2deg);
-  opacity:0;
-  pointer-events:none;
-  text-align:center;
-  min-width:min(360px,88vw);
-  padding:14px 26px;
-  border:2px solid #fff3cd;
-  border-radius:5px;
-  background:linear-gradient(180deg,#25180cf5,#0b0806ee);
-  box-shadow:0 12px 34px #000c,0 0 26px #ffd76a44,0 0 60px #ffd76a1c;
-}
-#plunkMomentIndicator.active{
-  animation:plunkMomentPop 1.18s cubic-bezier(.17,1.22,.32,1) both;
-}
-#plunkMomentIndicator .plunk-moment-title{
-  font-size:clamp(22px,4vw,36px);
-  line-height:1;
-  font-weight:1000;
-  letter-spacing:3px;
-  color:#fff4cf;
-  text-shadow:0 2px 5px #000,0 0 18px #ffd76a99;
-}
-@keyframes plunkMomentPop{
-  0%{opacity:0;transform:translate(-50%,-18px) scale(.78) rotate(-4deg)}
-  16%{opacity:1;transform:translate(-50%,0) scale(1.08) rotate(1deg)}
-  27%{transform:translate(-50%,0) scale(1) rotate(0)}
-  78%{opacity:1;transform:translate(-50%,0) scale(1)}
-  100%{opacity:0;transform:translate(-50%,-5px) scale(.98)}
-}
-
 #lobbyChangeIndicator{
   min-height:0;
   height:0;
@@ -19207,10 +19233,6 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 </style>
 
 <div id="plunkScreenTransition" aria-hidden="true"></div>
-<div id="plunkMomentIndicator" aria-live="polite" aria-atomic="true">
-  <div class="plunk-moment-title">GET PLUNK'D</div>
-</div>
-
 <div id="deathCauseCard" aria-live="assertive" aria-atomic="true"></div>
 
 <script id="plunk-v65-qol-runtime">
@@ -19958,44 +19980,10 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
   /* ---------- PLUNK MOMENT ---------- */
   Game._plunkMomentUntil=0;
   Game._plunkMomentLastAt=0;
+  try{document.getElementById('plunkMomentIndicator')?.remove();}catch(_){}
 
-  Game.triggerPlunkMoment=function(reason='HUGE IMPACT',impact=0,targetId=null){
-    if(!this.isHost && reason!=='NETWORK') return;
-    const now=performance.now();
-    if(reason!=='NETWORK' && now-(this._plunkMomentLastAt||0)<2400) return;
-    if(reason!=='NETWORK') this._plunkMomentLastAt=now;
-
-    // On clients, the authoritative target decides who is allowed to see the
-    // indicator. The host still broadcasts the event even when it targets another player.
-    const targetMatchesMe=targetId==null || String(targetId)===String(this.myId);
-    if(reason==='NETWORK' && !targetMatchesMe) return;
-
-    const el=targetMatchesMe?document.getElementById('plunkMomentIndicator'):null;
-    if(el){
-      el.classList.remove('active');
-      void el.offsetWidth;
-      el.classList.add('active');
-      clearTimeout(this._plunkMomentHideTimer);
-      this._plunkMomentHideTimer=setTimeout(()=>el.classList.remove('active'),1200);
-    }
-
-    try{
-      AudioManager.init(); AudioManager.resume();
-      AudioManager.beep?.(135,.12,'square',.07,260);
-      setTimeout(()=>AudioManager.beep?.(440,.14,'triangle',.08,860),45);
-    }catch(_){}
-
-    if(this.isHost && reason!=='NETWORK'){
-      NetworkManager.broadcast({
-        t:'plunk_moment',
-        reason:String(reason||'HUGE IMPACT').slice(0,30),
-        impact:Math.round(Number(impact)||0),
-        targetId:targetId==null?null:targetId
-      },false);
-    }
-
-    this.camera?.addShake?.(Math.min(13,4+(Number(impact)||0)*.006));
-  };
+  // Retired impact callout; kept as a harmless no-op for compatibility.
+  Game.triggerPlunkMoment=function(){return false;};
 
   /* Trigger on genuinely large player-vs-player impacts. */
   const originalResolveCollisions=Game.resolveCollisions.bind(Game);
@@ -20025,10 +20013,6 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
   const oldHandleNet=Game.handleNetData?.bind(Game);
   if(oldHandleNet){
     Game.handleNetData=function(pid,data){
-      if(data?.t==='plunk_moment'){
-        this.triggerPlunkMoment('NETWORK',Number(data.impact)||0,data.targetId??null);
-        return;
-      }
       return oldHandleNet(pid,data);
     };
   }
@@ -20214,6 +20198,139 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 </script>
 
 
+
+
+<script id="roguelike-final-card-balance-v69">
+(function(){
+  'use strict';
+  if(typeof ROGUE_CARDS==='undefined'||!Array.isArray(ROGUE_CARDS))return;
+
+  /* Final authoritative card-balance pass.
+     Attack Time is a benefit in PLUNK: negative storage = shorter/faster timing.
+     Cooldown is also a benefit when negative on the card display, but positive
+     cooldownPct is the internal reduction used by weaponSpec. */
+  const caps={common:.12,uncommon:.22,rare:.34,epic:.48,legendary:.60,cursed:.68};
+  const statKeys=['rangePct','cooldownPct','sizePct','attackSpeedPct','knockbackPct'];
+  const benefit=(k,v)=>k==='cooldownPct'||k==='attackSpeedPct'?-v:v;
+  const net=v=>statKeys.reduce((n,k)=>n+benefit(k,Number(v?.[k])||0),0);
+  const pct=v=>Math.round(Math.abs(Number(v)||0)*100);
+  const sign=(k,v)=>{
+    const n=Number(v)||0;
+    const neg=k==='cooldownPct'?n>0:n<0;
+    return neg?'−':'+';
+  };
+  const labels={rangePct:'RANGE',cooldownPct:'COOLDOWN',sizePct:'SIZE',attackSpeedPct:'ATTACK TIME',knockbackPct:'KNOCKBACK'};
+  const rebuild=v=>statKeys.filter(k=>Math.abs(Number(v?.[k])||0)>.0005)
+    .map(k=>sign(k,v[k])+pct(v[k])+'% '+labels[k]).join(' · ');
+  const find=id=>ROGUE_CARDS.find(c=>c&&c.id===id);
+  const set=(id,value,desc)=>{
+    const c=find(id); if(!c)return;
+    c.value=Object.assign({},c.value||{},value);
+    if(desc)c.desc=desc;
+  };
+
+  /* These cards previously became much stronger than their rarity suggested
+     when positive Attack Time was correctly converted into a benefit. */
+  set('sizeTempo',{sizePct:.10,attackSpeedPct:-.02},'A slightly larger weapon with a small attack-time improvement.');
+  set('tightGrip',{sizePct:.10,attackSpeedPct:-.02},'More weapon presence with a small attack-time improvement.');
+  set('heavyRhythm',{sizePct:.14,knockbackPct:.10,attackSpeedPct:-.08},'A bigger, harder-hitting weapon with faster attack timing.');
+  set('reachRhythm',{rangePct:.18,attackSpeedPct:-.04},'More reach with a small attack-time improvement.');
+  set('reachTempo',{rangePct:.14,attackSpeedPct:-.08},'Extend your reach while making the weapon act faster.');
+  set('heavyTempo',{sizePct:.18,knockbackPct:.14,attackSpeedPct:-.08},'A bigger, harder-hitting weapon with faster attack timing.');
+  set('quickCycle',{cooldownPct:.16,attackSpeedPct:-.10},'Attack more often and get through each weapon motion faster.');
+  set('longLight',{rangePct:.25,sizePct:-.10,attackSpeedPct:-.10},'Trade weapon bulk for reach and faster handling.');
+
+  set('longwinded',{rangePct:.28,attackSpeedPct:-.06},'A long weapon that still keeps a quick attack cycle.');
+  set('glassRhythm',{knockbackPct:.24,attackSpeedPct:-.06},'A harder-hitting weapon with quicker attack timing.');
+  set('titanReach',{rangePct:.30,sizePct:.14,attackSpeedPct:-.06},'A major reach and presence upgrade with quicker attack timing.');
+  set('ironTempo',{sizePct:.22,knockbackPct:.14,attackSpeedPct:-.08},'A large, forceful weapon that attacks more quickly.');
+  set('grandReach',{rangePct:.35,sizePct:.18,attackSpeedPct:-.05},'Extreme reach and size with quicker attack timing.');
+  set('overwhelmingForce',{sizePct:.30,knockbackPct:.24,attackSpeedPct:-.06},'A giant, forceful weapon that still attacks quickly.');
+
+  /* Cursed cards retain a meaningful downside after the Attack Time cleanup. */
+  set('brittleEdge',{sizePct:.34,attackSpeedPct:-.16,cooldownPct:-.18},'A large, forgiving weapon with faster timing, but a longer cooldown.');
+  set('heavyReach',{rangePct:.42,sizePct:.22,attackSpeedPct:-.14,cooldownPct:-.20},'Massive reach and bulk with faster timing, but a longer cooldown.');
+  set('slowGiant',{sizePct:.46,knockbackPct:.32,attackSpeedPct:-.16,cooldownPct:-.20},'An enormous powerhouse with faster timing, but a much longer cooldown.');
+
+  /* Rebuild legacy speed/hitbox fields and normalize every ordinary stat card. */
+  for(const c of ROGUE_CARDS){
+    if(!c)continue;
+    if(c.key==='speedPct'){
+      const v=Math.abs(Number(c.value)||0);
+      c.key='attackSpeedPct'; c.value=-v;
+    }
+    if(c.key==='hitboxPct'){
+      const v=Number(c.value)||0;
+      c.key='sizePct'; c.value=v>=0?Math.abs(v):-.0;
+    }
+    if(c.key==='multi'&&c.value&&typeof c.value==='object'){
+      const v=c.value;
+      if(Number(v.hitboxPct)){
+        const h=Number(v.hitboxPct)||0,z=Number(v.sizePct)||0;
+        v.sizePct=(Math.sign(h||z)||1)*(Math.max(Math.abs(h),Math.abs(z))+.03);
+        delete v.hitboxPct;
+      }
+      if(Number(v.speedPct)){
+        v.attackSpeedPct=-(Math.abs(Number(v.attackSpeedPct)||0)+Math.abs(Number(v.speedPct)||0));
+        delete v.speedPct;
+      }
+    }
+    if(c.key==='attackSpeedPct')c.value=-Math.abs(Number(c.value)||0);
+    if(c.key==='multi'&&c.value&&typeof c.value==='object'&&Number(c.value.attackSpeedPct))c.value.attackSpeedPct=-Math.abs(Number(c.value.attackSpeedPct));
+  }
+
+  /* Cursed means high upside with an actual tradeoff. */
+  for(const c of ROGUE_CARDS){
+    if(!c||c.rarity!=='cursed'||c.key==='patternCone'||c.key==='compound')continue;
+    const v=c.key==='multi'?(c.value||{}):{[c.key]:Number(c.value)||0};
+    const hasDrawback=Number(v.rangePct)<0||Number(v.sizePct)<0||Number(v.cooldownPct)<0||Number(v.knockbackPct)<0;
+    if(!hasDrawback && c.id!=='doubleTrouble')v.cooldownPct=-.18;
+    if(c.key==='multi')c.value=v;
+  }
+
+  /* Keep each rarity inside a predictable power band. This is based on the
+     actual gameplay direction of each stat, not the printed sign. */
+  for(const c of ROGUE_CARDS){
+    if(!c||c.key==='patternCone'||c.key==='compound'||c.key==='doubleTrouble')continue;
+    const v=c.key==='multi'?(c.value||{}):{[c.key]:Number(c.value)||0};
+    const n=net(v),cap=caps[c.rarity]||.60;
+    if(n>cap+.0005){
+      const mult=cap/n;
+      for(const k of statKeys)if(Number.isFinite(Number(v[k])))v[k]=Number(v[k])*mult;
+    }
+    if(c.key==='multi')c.value=v; else c.value=Number(v[c.key])||0;
+  }
+
+  /* Double Trouble is deliberately powerful, but its post-pair cooldown is a
+     real penalty. Never let a later conversion turn that penalty into a buff. */
+  const dt=find('doubleTrouble');
+  if(dt){dt.key='multi';dt.value={cooldownPct:-.75,doubleTrouble:1};}
+
+  /* Synchronize every ordinary card's visible effect with its final values. */
+  for(const c of ROGUE_CARDS){
+    if(!c)continue;
+    if(c.key==='multi'&&c.value&&typeof c.value==='object')c.effect=rebuild(c.value);
+    else if(statKeys.includes(c.key))c.effect=sign(c.key,c.value)+pct(c.value)+'% '+labels[c.key];
+    if(c.key==='attackSpeedPct')c.desc='Your weapon attacks, wind-ups, and movement happen faster.';
+    else if(c.key==='multi'&&c.value&&Number(c.value.attackSpeedPct)<-.0005){
+      let d=String(c.desc||'');
+      d=d.replace(/takes longer|take longer|slower|slow(?:er)?|more time|attack-time tax|time cost|time trade/gi,'faster');
+      d=d.replace(/weapon speed/gi,'attack timing');
+      if(!/faster|quick|rapid|swift/i.test(d))d+=' Attack timing is faster.';
+      c.desc=d;
+    }
+  }
+
+  /* Pattern cards: keep the special mechanic intact but avoid runaway fan sizes. */
+  const cone=find('coneBurst'),fan=find('tripleFan');
+  if(cone&&cone.value){cone.value.patternConeCount=2;cone.value.patternConeInterval=2;cone.value.patternConeSpread=.28;}
+  if(fan&&fan.value){fan.value.patternConeCount=3;fan.value.patternConeInterval=3;fan.value.patternConeSpread=.24;fan.effect='EVERY 3RD ATTACK FIRES 3 EXTRA WEAPONS';fan.desc='Three extra attacks spread across a wider fan on every third attack.';}
+  const ci=find('compoundInterest');
+  if(ci){ci.value=1.30;ci.effect='EVERY 3RD PICK IS 30% STRONGER';ci.desc='Every third, sixth, ninth, and later third pick gains a 30% bonus.';}
+
+  Game.__plunkV69RoguelikeCardBalance=true;
+})();
+</script>
 
 </body>
 
@@ -23760,7 +23877,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
     if(!target||!target.alive||target.spectator)return;
     const dx=target.x-x,dy=target.y-y,dist=Math.hypot(dx,dy)||1,nx=dx/dist,ny=dy/dist;
     const before=Math.hypot(Number(target.vx)||0,Number(target.vy)||0);
-    const k=Math.max(0,Number(speed)||0);
+    const k=Math.max(0,Number(speed)||0)*WEAPON_KNOCKBACK_SCALE;
     target.vx+=nx*k;
     target.vy+=ny*k;
     target.hitFlash=8;
@@ -24704,6 +24821,294 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
   }
 
   Game.__finalWeaponRenderModeGuardV65=true;
+})();
+</script>
+<script id="plunk-v68-final-collision-chat-attacktime-cleanup">
+(function(){
+  'use strict';
+  if(typeof Game==='undefined')return;
+
+  /* ---------------------------------------------------------------
+     FINAL WEAPON CONTACT DISPATCHER
+     Every held/attacking Weaponry weapon comes through this one path.
+     The latest exact silhouette test remains authoritative; when a custom
+     silhouette does not match, the original radial segment is used as a
+     narrow compatibility fallback. This restores the older weapons without
+     replacing their existing geometry, timing, or death-mode behavior.
+  ---------------------------------------------------------------- */
+  if(typeof WEAPONS!=='undefined'&&typeof Game.weaponSegmentHit==='function'){
+    const OLD_IDS=new Set(Object.keys(WEAPONS).filter(id=>id!=='firework_cannon'&&id!=='potion'&&id!=='pitchfork'));
+    const NEW_ORBIT_IDS=new Set(['firework_cannon','potion','pitchfork']);
+    const exactHit=Game.weaponSegmentHit.bind(Game);
+    const hasAliveTarget=(target)=>!!target&&target.alive&&!target.spectator;
+
+    const compatibleHit=(attacker,angle,inner,outer,width,target)=>{
+      if(!hasAliveTarget(target)||!attacker)return false;
+      if(exactHit(attacker,angle,inner,outer,width,target))return true;
+      const id=typeof validWeapon==='function'?validWeapon(attacker.weapon||'sword'):String(attacker.weapon||'sword');
+      // The three new orbiting weapons already have dedicated idle contact logic.
+      // Do not let the generic fallback manufacture a second idle hit for them.
+      if(NEW_ORBIT_IDS.has(id)&&String(attacker.weaponPhase||'idle')==='idle')return false;
+      const a=Number.isFinite(Number(angle))?Number(angle):(Number(attacker.weaponPhase==='idle'?attacker.weaponOrbitAngle:attacker.weaponAttackAngle)||0);
+      const lo=Math.max(0,Number(inner)||0),hi=Math.max(lo,Number(outer)||lo);
+      const aa={x:attacker.x+Math.cos(a)*lo,y:attacker.y+Math.sin(a)*lo};
+      const bb={x:attacker.x+Math.cos(a)*hi,y:attacker.y+Math.sin(a)*hi};
+      const pad=Math.max(2,Number(width)||6);
+      const dx=bb.x-aa.x,dy=bb.y-aa.y,len2=dx*dx+dy*dy;
+      const t=len2>1e-9?Math.max(0,Math.min(1,((target.x-aa.x)*dx+(target.y-aa.y)*dy)/len2)):0;
+      const qx=aa.x+dx*t,qy=aa.y+dy*t;
+      const reach=Math.max(0,Number(target.radius)||26)+pad;
+      return (target.x-qx)*(target.x-qx)+(target.y-qy)*(target.y-qy)<=reach*reach;
+    };
+
+    Game.weaponHitTest=function(attacker,angle,inner,outer,width,target){
+      return compatibleHit(attacker,angle,inner,outer,width,target);
+    };
+
+    Game.weaponPlayerContact=function(attacker,angle,inner,outer,width,kind,now){
+      if(!this.isHost||!attacker?.alive||attacker.spectator)return;
+      const locks=attacker.weaponContactLocks||(attacker.weaponContactLocks={});
+      const spec=this.weaponSpec(attacker)||{};
+      const lockMs=Math.max(0.035,Number(spec.contactCooldown)||.20)*1000; // seconds -> ms (was Math.max(35,...) = 35s lock)
+      for(const other of Object.values(this.players||{})){
+        if(!other||other.id===attacker.id||!other.alive||other.spectator)continue;
+        if(Number(locks[other.id]||0)>now)continue;
+        if(this.weaponHitTest(attacker,angle,inner,outer,width,other)){
+          locks[other.id]=now+lockMs;
+          this.weaponApplyKnockback(attacker,other,kind,this.weaponHitSpeed(attacker,kind));
+        }
+      }
+    };
+
+    Game.weaponActiveContact=function(attacker,angle,inner,outer,width,kind){
+      if(!this.isHost||!attacker?.alive||attacker.spectator)return;
+      const hits=attacker.weaponHitIds||(attacker.weaponHitIds={});
+      const id=typeof validWeapon==='function'?validWeapon(attacker.weapon||'sword'):String(attacker.weapon||'sword');
+      const testOnce=(testAngle)=>{
+        for(const other of Object.values(this.players||{})){
+          if(!other||other.id===attacker.id||!other.alive||other.spectator||hits[other.id])continue;
+          if(!this.weaponHitTest(attacker,testAngle,inner,outer,width,other))continue;
+          hits[other.id]=true;
+          if(this.weaponDeathEnabled())this.weaponEliminate(attacker,other,kind,other.x,other.y);
+          else this.weaponApplyKnockback(attacker,other,kind,this.weaponHitSpeed(attacker,kind));
+        }
+      };
+
+      testOnce(angle);
+      // The old pattern system was implemented by wrapping this function. Since
+      // this is now the single final dispatcher, apply those extra attack angles
+      // here exactly once. Pitchfork already explicitly iterates its own angles.
+      if(id!=='pitchfork'&&Array.isArray(attacker._weaponPatternAngles)){
+        for(const extra of attacker._weaponPatternAngles)testOnce(extra);
+      }
+    };
+
+    // Keep the old update loops authoritative, but guarantee that every legacy
+    // weapon has an idle contact sample even if an earlier wrapper accidentally
+    // bypassed weaponPlayerContact. The dedicated new orbiting system remains the
+    // owner for Firework Cannon, Potion, and Pitchfork.
+    const previousStepHost=Game.stepHost?.bind(Game);
+    if(previousStepHost){
+      Game.stepHost=function(dt){
+        previousStepHost(dt);
+        if(!this.isHost||!this.isWeaponry())return;
+        const now=performance.now();
+        for(const p of Object.values(this.players||{})){
+          if(!p||!p.alive||p.spectator||String(p.weaponPhase||'idle')!=='idle')continue;
+          const id=typeof validWeapon==='function'?validWeapon(p.weapon||'sword'):String(p.weapon||'sword');
+          if(!OLD_IDS.has(id))continue;
+          const s=this.weaponSpec(p)||{};
+          this.weaponPlayerContact(p,p.weaponOrbitAngle,s.idleInner,s.idleOuter,s.idleWidth,'idle',now);
+        }
+      };
+    }
+    Game.__plunkV68UnifiedWeaponContact=true;
+  }
+
+  /* ---------------------------------------------------------------
+     RETIRED IMPACT CALLOUT
+     No presentation is attached to the stored impact data.
+  ---------------------------------------------------------------- */
+  Game.triggerPlunkMoment=function(){return false;};
+  Game._plunkMomentUntil=0;
+  Game._plunkMomentLastAt=0;
+  try{clearTimeout(Game._plunkMomentHideTimer);delete Game._plunkMomentHideTimer;}catch(_){}
+
+  /* ---------------------------------------------------------------
+     ATTACK TIME IS ALWAYS A BENEFICIAL TIME REDUCTION
+     Normalize every card, including multi-stat cards created by the later
+     balance passes. Negative storage means shorter/faster actual timing.
+  ---------------------------------------------------------------- */
+  if(typeof ROGUE_CARDS!=='undefined'&&Array.isArray(ROGUE_CARDS)){
+    const attackRe=/[+\-−]\s*\d+(?:\.\d+)?%\s*ATTACK TIME/i;
+    const forceEffect=(effect,v)=>{
+      const n=Math.round(Math.abs(Number(v)||0)*100);
+      const replacement='−'+n+'% ATTACK TIME';
+      const text=String(effect||'');
+      if(attackRe.test(text))return text.replace(attackRe,replacement);
+      const legacyRe=/[+\-−]\s*\d+(?:\.\d+)?%\s*WEAPON SPEED/i;
+      if(legacyRe.test(text))return text.replace(legacyRe,replacement);
+      return text?text+' · '+replacement:replacement;
+    };
+    const fixDesc=(desc)=>{
+      let d=String(desc||'');
+      d=d.replace(/takes longer|take longer|slower|slow(er)?|more time|longer attack (motion|cycle)|attack-time tax|time (cost|trade)/gi,'faster');
+      d=d.replace(/starts and moves more quickly/gi,'starts and moves faster');
+      d=d.replace(/weapon speed/gi,'attack timing');
+      d=d.replace(/attack motion and recovery finish slower/gi,'attack motion and recovery finish faster');
+      return d;
+    };
+    for(const card of ROGUE_CARDS){
+      if(!card)continue;
+      if(card.key==='speedPct'){
+        const v=Math.abs(Number(card.value)||0);
+        card.key='attackSpeedPct';
+        card.value=-v;
+      }
+      if(card.key==='attackSpeedPct'){
+        const v=Math.abs(Number(card.value)||0);
+        if(v>.0005)card.value=-v;
+        card.effect=forceEffect(card.effect,-v);
+        card.desc=fixDesc(card.desc);
+      }else if(card.key==='multi'&&card.value&&typeof card.value==='object'){
+        if(Number(card.value.speedPct))card.value.attackSpeedPct=(Number(card.value.attackSpeedPct)||0)+Number(card.value.speedPct);
+        delete card.value.speedPct;
+        if(Number.isFinite(Number(card.value.attackSpeedPct))&&Math.abs(Number(card.value.attackSpeedPct))>.0005){
+          const v=-Math.abs(Number(card.value.attackSpeedPct));
+          card.value.attackSpeedPct=v;
+          card.effect=forceEffect(card.effect,v);
+          card.desc=fixDesc(card.desc);
+        }
+      }
+    }
+  }
+
+  // Expose the corrected cooldowns defensively after all Weaponry spec wrappers.
+  if(typeof WEAPONS!=='undefined'){
+    if(WEAPONS.bombardier)WEAPONS.bombardier.cooldown=1.20;
+    if(WEAPONS.pitchfork)WEAPONS.pitchfork.cooldown=6.50;
+    if(WEAPONS.firework_cannon)WEAPONS.firework_cannon.cooldown=6.00;
+
+    // Several older Weaponry spec wrappers replace cooldown after reading WEAPONS.
+    // Enforce the requested final values at the actual spec returned to gameplay.
+    const finalWeaponSpec=Game.weaponSpec?.bind(Game);
+    if(finalWeaponSpec && !Game.__plunkV68CooldownSpecWrapped){
+      Game.weaponSpec=function(p){
+        const s=finalWeaponSpec(p),id=typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):String(p?.weapon||'sword');
+        const u=p?.weaponUpgrades||{},cd=Math.max(.10,1-(Number(u.cooldownPct)||0));
+        if(id==='bombardier')s.cooldown=1.20*cd;
+        else if(id==='pitchfork')s.cooldown=6.50*cd;
+        else if(id==='firework_cannon')s.cooldown=6.00*cd;
+        return s;
+      };
+      Game.__plunkV68CooldownSpecWrapped=true;
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     PERMANENT NORMAL-WEAPON MELEE CONTACT
+     The physical weapon is a collision shape in both idle and attack states.
+     Do not use weaponHitIds here: that old one-hit-per-swing gate made the
+     collision shape effectively disappear after the first contact. A short
+     per-target contact lock prevents a single overlap from applying force on
+     every fixed step while keeping the hitbox continuously present.
+  ------------------------------------------------------------------ */
+  if(!Game.__plunkV72ContinuousMelee){
+    const NORMAL_MELEE=new Set(['sword','bo_staff','axe','flail','chakram','scythe','lance','katana','twinblades','anchor','gyroblade']);
+    const SKIP_ACTIVE=new Set(['gyroblade']);
+    const oldUpdateWeaponsFinal=Game.updateWeapons?.bind(Game);
+    if(oldUpdateWeaponsFinal){
+      Game.updateWeapons=function(dt){
+        oldUpdateWeaponsFinal(dt);
+        if(!this.isHost||!this.isWeaponry()||!this.players)return;
+        const now=performance.now();
+        for(const p of Object.values(this.players)){
+          if(!p||!p.alive||p.spectator)continue;
+          const id=typeof validWeapon==='function'?validWeapon(p.weapon||'sword'):String(p.weapon||'sword');
+          if(!NORMAL_MELEE.has(id))continue;
+          if(id==='anchor'&&p.weaponPhase==='hold'&&p.anchorGrounded)continue;
+          if(SKIP_ACTIVE.has(id)&&p.gyroProjectileActive)continue;
+
+          const phase=String(p.weaponPhase||'idle');
+          const s=this.weaponSpec(p)||{};
+          const locks=p.weaponContactLocks||(p.weaponContactLocks={});
+          const lockMs=Math.max(0.035,Number(s.contactCooldown)||0.20)*1000;
+          const angle=phase==='idle'
+            ? Number(p.weaponOrbitAngle)||0
+            : Number(p.weaponAttackAngle)||Number(p.weaponOrbitAngle)||0;
+          const inner=Math.max(0,Number(s.idleInner)||0);
+          const outer=Math.max(inner,Number(s.idleOuter)||0);
+          const width=Math.max(4,Number(s.activeWidth)||Number(s.idleWidth)||7);
+
+          for(const other of Object.values(this.players)){
+            if(!other||other.id===p.id||!other.alive||other.spectator)continue;
+            const key=String(other.id),until=Number(locks[key]||0);
+            if(until>now)continue;
+            // The original attack loop may have just registered this target in
+            // weaponHitIds earlier in the same fixed step. Convert that one-shot
+            // hit into the short continuous-contact lock instead of applying a
+            // second impulse on the same frame. Future frames can re-contact.
+            if(phase!=='idle'&&p.weaponHitIds&&p.weaponHitIds[key]){
+              locks[key]=now+lockMs;
+              continue;
+            }
+            if(!this.weaponHitTest(p,angle,inner,outer,width,other))continue;
+
+            locks[key]=now+lockMs;
+            if(this.weaponDeathEnabled()&&phase!=='idle'){
+              this.weaponEliminate(p,other,id,other.x,other.y);
+            }else{
+              this.weaponApplyKnockback(p,other,id,typeof this.weaponHitSpeed==='function'
+                ? this.weaponHitSpeed(p,id)
+                : Number(s.contactKnockback)||320);
+            }
+            other.hitFlash=Math.max(Number(other.hitFlash)||0,10);
+            other.lastHitBy=p.id;
+            other.lastHitAt=now;
+          }
+        }
+      };
+    }
+    Game.__plunkV72ContinuousMelee=true;
+  }
+
+  /* Storm Cycle is a live multi-stat card. Force its attack-time component
+     negative both in the card pool and when a networked/public card is applied. */
+  if(typeof ROGUE_CARDS!=='undefined'&&Array.isArray(ROGUE_CARDS)){
+    const storm=ROGUE_CARDS.find(c=>c&&c.id==='stormCycle');
+    if(storm){
+      storm.key='multi';
+      storm.value=Object.assign({},storm.value||{}, {cooldownPct:.22,attackSpeedPct:-.18});
+      delete storm.value.speedPct; delete storm.value.hitboxPct;
+      storm.effect='−22% COOLDOWN · −18% ATTACK TIME';
+      storm.desc='A build centered on frequent attacks with faster attack timing.';
+    }
+  }
+  const priorRogueApplyV72=Game.applyWeaponRogueUpgrade?.bind(Game);
+  if(priorRogueApplyV72&&!Game.__plunkV72RogueApplyGuard){
+    Game.applyWeaponRogueUpgrade=function(p,card){
+      if(card){
+        card=Object.assign({},card);
+        if(card.key==='attackSpeedPct'){
+          const v=Math.abs(Number(card.value)||0);
+          card.value=-v;
+          card.effect=String(card.effect||'').replace(/[+−-]\s*\d+(?:\.\d+)?%\s*ATTACK TIME/i,'−'+Math.round(v*100)+'% ATTACK TIME');
+        }else if(card.key==='multi'&&card.value&&typeof card.value==='object'){
+          card.value=Object.assign({},card.value);
+          if(Number.isFinite(Number(card.value.attackSpeedPct))){
+            const v=Math.abs(Number(card.value.attackSpeedPct)||0);
+            card.value.attackSpeedPct=-v;
+            delete card.value.speedPct;
+            card.effect=String(card.effect||'').replace(/[+−-]\s*\d+(?:\.\d+)?%\s*ATTACK TIME/i,'−'+Math.round(v*100)+'% ATTACK TIME');
+          }
+        }
+      }
+      return priorRogueApplyV72(p,card);
+    };
+    Game.__plunkV72RogueApplyGuard=true;
+  }
+
+  Game.__plunkV68FinalCleanup=true;
 })();
 </script>
 
