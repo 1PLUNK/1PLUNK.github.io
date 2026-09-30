@@ -1920,6 +1920,19 @@ input[type=text]:hover,input[type=number]:hover,input[type=range]:hover,select:h
 }
 
 </style>
+
+<style id="plunk-v118-multiplier-layout">
+#weaponRogueOverlay.active:not(.starting-soon){display:grid!important;grid-template-columns:860px 230px!important;gap:12px!important;justify-content:center!important;align-items:center!important;width:100vw!important;max-width:none!important;overflow-x:auto!important}
+#weaponRogueOverlay.active:not(.starting-soon)>.weapon-rogue-panel{grid-column:1!important;grid-row:1!important;width:860px!important;min-width:860px!important;max-width:860px!important;margin:0!important}
+#weaponRogueOverlay.active:not(.starting-soon)>.weapon-rogue-chat{grid-column:2!important;grid-row:1!important}
+#weaponRogueOverlay #weaponRogueMultiplierBox{position:fixed;display:none;width:76px;height:66px;box-sizing:border-box;padding:8px 3px;border:1px solid #cfaa68;border-radius:5px;background:#20140c;color:#ffe5ad;text-align:center;box-shadow:0 4px 13px #0009;pointer-events:none;z-index:1250}
+#weaponRogueOverlay.active:not(.starting-soon) #weaponRogueMultiplierBox{display:block}
+#weaponRogueMultiplierBox .multiplier-label{display:block;font:900 8px/1.15 system-ui,Arial,sans-serif;letter-spacing:.3px}
+#weaponRogueMultiplierBox .multiplier-value{display:block;margin-top:6px;font:900 21px/1 system-ui,Arial,sans-serif;color:#ffd47c}
+#weaponRogueMultiplierBox.boosted{border-color:#ffe397;box-shadow:0 0 14px #ffd67a66,0 4px 13px #0009}
+@media(max-width:900px){#weaponRogueOverlay.active:not(.starting-soon){display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:flex-start!important;overflow-x:auto!important;padding:12px!important}#weaponRogueOverlay.active:not(.starting-soon)>.weapon-rogue-panel{width:860px!important;min-width:860px!important;max-width:860px!important;align-self:flex-start!important}#weaponRogueOverlay.active:not(.starting-soon)>.weapon-rogue-chat{align-self:flex-start!important}}
+</style>
+
 </head>
 <body>
 <div id="app">
@@ -1937,7 +1950,7 @@ input[type=text]:hover,input[type=number]:hover,input[type=range]:hover,select:h
     <div class="spherebox-menu-hover"><button class="btn spherebox-main-button" type="button">SPHEREBOX</button><div class="spherebox-hover-actions"><button class="btn small" type="button" data-sphere-quick="dash">DASH EFFECTS</button><button class="btn small" type="button" data-sphere-quick="trail">TRAILS</button><button class="btn small" type="button" data-sphere-quick="hit">HIT EFFECTS</button></div></div>
     <button class="btn" data-go="settings">SETTINGS</button>
   </div>
-  <div style="margin-top:18px;color:var(--text-dim);font-size:11px;">Version 3.00 | made by phwarf</div>
+  <div style="margin-top:18px;color:var(--text-dim);font-size:11px;">Version 3.01 | made by phwarf</div>
 </div>
 
 <!-- ============ CREATE GAME ============ -->
@@ -2237,6 +2250,7 @@ input[type=text]:hover,input[type=number]:hover,input[type=range]:hover,select:h
 
 <!-- ============ WEAPONRY ROGUELIKE DRAFT ============ -->
 <div id="weaponRogueOverlay" aria-live="polite" aria-modal="true">
+  <div id="weaponRogueMultiplierBox" aria-live="polite"><span class="multiplier-label">MULTIPLIER</span><span class="multiplier-value">1×</span></div>
   <div class="weapon-rogue-panel">
     <div class="weapon-rogue-kicker">WEAPONRY ROGUELIKE</div>
     <div class="weapon-rogue-title" id="weaponRogueTitle">ROUND UPGRADE</div>
@@ -3967,6 +3981,20 @@ const Chat = {
   },
 
   send(text){
+    const setCardText=String(text||'').trim();
+    if(/^!setcard(?:\s|$)/i.test(setCardText)){
+      const notify=message=>this.append({t:'chat',name:'SYSTEM',color:'#ffcf88',text:message,ts:Date.now(),system:true});
+      if(!Game.isHost){notify('Only the host can use !setcard.');return false;}
+      const match=setCardText.match(/^!setcard\s+(\d+)$/i);
+      const count=match?Number(match[1]):NaN;
+      if(!Number.isInteger(count)||count<1||count>10){notify('Usage: !setcard <1-10>');return false;}
+      Game.weaponRogueCardSets=count;
+      if(!Game.matchSettings)Game.matchSettings={};
+      Game.matchSettings.weaponRogueCardSets=count;
+      this.markSent(setCardText,Date.now());
+      notify('Roguelike card sets: '+count+' ('+Math.max(20,count*10)+' seconds per draft).');
+      return true;
+    }
     if(/^!open(?:\s|$)/i.test(String(text||'').trim())){
       const token=String(text||'').trim().replace(/^!open(?:\s+|$)/i,'').trim();
       const now=Date.now();
@@ -3992,7 +4020,7 @@ const Chat = {
       return false;
     }
     if(/^!help$/i.test(trimmed)){
-      this.append({t:'chat',name:'SYSTEM',color:'#ffcf88',text:'Commands: !kick username  ·  !exit  ·  !catalog  ·  !open <code>',ts:Date.now(),system:true});
+      this.append({t:'chat',name:'SYSTEM',color:'#ffcf88',text:'Commands: !kick username  ·  !exit  ·  !catalog  ·  !open <code>  ·  !setcard <1-10> (host)',ts:Date.now(),system:true});
       this.markSent(trimmed,now);
       return true;
     }
@@ -4932,7 +4960,7 @@ const Game = {
       p.dashSerial=0; p.netDashSerial=0; p.grappleSerial=0; p.netGrappleSerial=0; p._dashChargeSfxLevel=0;
       p.grappleEventSeq=0; p.lastGrappleEventSeq=null; p.pendingGrappleTargetId=null; p.remoteGrappleActive=false; p.remoteGrappleEventSeq=null;
       p.actionAiming=false; p.actionAngle=-Math.PI/2; p.actionAimStartAngle=-Math.PI/2; p.actionAimStartTime=0; p.actionEventSeq=0; p.lastActionEventSeq=null; p.pendingActionAngle=null; p.remoteActionActive=false; p.actionCooldown=0; p.actionCooldownMax=GameModes[this.mode]?.mine?PHYS.mineCooldown:PHYS.actionProjectileCooldown; p.actionCharge=0; p.actionChargeStartTime=0; p.actionPower=0; p.actionKind=null; p._actionChargeFxAcc=0;
-      p.weapon=validWeapon(p.weapon||'sword'); p.weaponPhase='idle'; p.weaponPhaseTime=0; p.weaponAttackAngle=p.weaponOrbitAngle; p.weaponActiveRotation=0; p.weaponLungeTime=0; p.weaponExtraAngles=[]; p.weaponPatternAngles=[]; p._weaponPatternAngles=[]; p.weaponActionCount=0; p.weaponActionSerial=0; p.netWeaponActionSerial=0; p.weaponEventSeq=0; p.lastWeaponEventSeq=null; p.weaponCooldown=0; p.weaponCooldownMax=0; p.weaponHitIds={}; p.weaponContactLocks={}; p.weaponWallBlocked=false; p.weaponLastNetSyncAt=0; p.weaponNetSeq=0; p.weaponNetAppliedSeq=0;
+      p.weapon=validWeapon(p.weapon||'sword'); p.weaponPhase='idle'; p.weaponPhaseTime=0; p.weaponAttackAngle=p.weaponOrbitAngle; p.weaponActiveRotation=0; p.weaponLungeTime=0; p.weaponExtraAngles=[]; p.weaponPatternAngles=[]; p._weaponPatternAngles=[]; p.weaponActionCount=0; p.weaponActionSerial=0; p.netWeaponActionSerial=0; p.weaponEventSeq=0; p.lastWeaponEventSeq=null; p.weaponCooldown=0; p.weaponCooldownMax=0; p._holdAttackUntil=0; p._holdAttackReady=false; p.weaponHitIds={}; p.weaponContactLocks={}; p.weaponWallBlocked=false; p.weaponLastNetSyncAt=0; p.weaponNetSeq=0; p.weaponNetAppliedSeq=0;
       p._jumpTrackActive=false; p._jumpStartY=p.y; p._jumpPeakY=p.y; p._jumpApexFxDone=false; p._wallTouchFxAt=0;
       p.remoteJumpHeld=false; p.remoteJumpHoldSeq=0; p.remoteJumpReleaseSeq=0;
     }
@@ -4970,13 +4998,23 @@ const Game = {
         NetworkManager.sendToHost({t:'jump', seq:me.jumpEventSeq}, true);
       }
       if(me && this.mode==='weaponry'){
+        const held=!!raw.grapple && !InputManager.chatFocused && me.alive && !me.spectator;
+        const now=performance.now(),available=me.weaponPhase==='idle' && (Number(me.weaponCooldown)||0)<=0;
+        const clearQueue=()=>{me._holdAttackUntil=0;me._holdAttackReady=false;};
+        const attack=()=>this.startWeaponAttack(me,me.weaponOrbitAngle,true,null);
         if(me.input.grapplePressed){
-          me.input.grapplePressed=false;
-          if(me.weapon==='chakram' && me.weaponPhase==='hold'){
-            if(!this.returnChakram(me,true,null)) this.showActionFailureFeedback(me,'action');
-          }else if(!this.startWeaponAttack(me,me.weaponOrbitAngle,true,null)) this.showActionFailureFeedback(me,'action');
-        }
-        if(me && !this.isHost) this.updateWeaponNetSync(me, dt);
+          me.input.grapplePressed=false;clearQueue();
+          if(me.weapon==='chakram' && me.weaponPhase!=='idle' && me.weaponPhase!=='return'){
+            if(!this.returnChakram(me,true,null))this.showActionFailureFeedback(me,'action');
+          }else if(!attack() && available)this.showActionFailureFeedback(me,'action');
+        }else if(!held){
+          if(!raw.grapple && me._holdAttackReady && available)attack();
+          clearQueue();
+        }else if(available){
+          if(!me._holdAttackReady){me._holdAttackReady=true;me._holdAttackUntil=now+200;}
+          else if(now>=me._holdAttackUntil){if(attack())clearQueue();else me._holdAttackUntil=now+50;}
+        }else clearQueue();
+        if(me && !this.isHost)this.updateWeaponNetSync(me,dt);
       } else if(me && (this.mode==='grapple' || this.mode==='pypg' || this.mode==='grapple_hook' || this.mode==='arrows' || this.mode==='death_arrows' || this.mode==='bouncy_arrows' || this.mode==='mines' || this.mode==='large_mines' || this.mode==='death_mines')){
         const actionMode=this.mode;
         if(actionMode==='grapple' || actionMode==='pypg'){
@@ -7044,7 +7082,7 @@ const Game = {
       secondary=hsvToCss(p.cust?.hue2??40,p.cust?.saturation2??60,78),
       active=p.weaponPhase!=='idle';
     ctx.save();
-    if(active && Array.isArray(p._weaponPatternAngles) && p._weaponPatternAngles.length && ['sword','axe','scythe','lance','katana','twinblades','anchor','gyroblade'].includes(id)){
+    if(active && Array.isArray(p._weaponPatternAngles) && p._weaponPatternAngles.length && ['sword','axe','scythe','lance','katana','twinblades'].includes(id)){
       ctx.save(); ctx.globalAlpha=.50;
       for(const ea of p._weaponPatternAngles){
         const fake2=Object.assign({},p,{weaponAttackAngle:ea,weaponPhase:p.weaponPhase,weaponActiveRotation:Number(p.weaponActiveRotation)||0});
@@ -7302,7 +7340,7 @@ const Game = {
     ctx.restore();
   },
   weaponHudUpdate(){
-    const hud=document.getElementById('weaponHud');if(!hud)return;const show=(this.state==='playing'||this.state==='countdown')&&this.isWeaponry();hud.classList.toggle('active',show);if(!show)return;const p=this.players[this.myId];if(!p)return;document.getElementById('weaponHudName').textContent=weaponLabel(p.weapon).toUpperCase();let st='READY';if(p.weaponPhase==='active'||p.weaponPhase==='hold')st=(p.weapon==='bo_staff'||p.weapon==='chakram')?'SPINNING':'ACTIVE';else if(p.weaponPhase==='extend')st='ATTACKING';else if(p.weaponPhase==='retract')st='RETURNING';else if((p.weaponCooldown||0)>0)st=`COOLDOWN ${(p.weaponCooldown).toFixed(1)}s`;document.getElementById('weaponHudState').textContent=st;
+    const hud=document.getElementById('weaponHud');if(!hud)return;const show=(this.state==='playing'||this.state==='countdown')&&this.isWeaponry();hud.classList.toggle('active',show);if(!show)return;const p=this.players[this.myId];if(!p)return;document.getElementById('weaponHudName').textContent=weaponLabel(p.weapon).toUpperCase();let st='READY';if(p.weapon==='gyroblade'&&(p.weaponCooldown||0)>0)st=`COOLDOWN ${p.weaponCooldown.toFixed(1)}s`;else if(p.weaponPhase==='active'||p.weaponPhase==='hold')st=(p.weapon==='bo_staff'||p.weapon==='chakram')?'SPINNING':'ACTIVE';else if(p.weaponPhase==='extend')st='ATTACKING';else if(p.weaponPhase==='retract')st='RETURNING';else if((p.weaponCooldown||0)>0)st=`COOLDOWN ${(p.weaponCooldown).toFixed(1)}s`;document.getElementById('weaponHudState').textContent=st;
   },
 
   findNearestLivingPlayer(p){
@@ -15623,8 +15661,7 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
 
   const rarityWeight={common:54,uncommon:28,rare:12,epic:5,legendary:1,cursed:3};
   function weightedCard(excluded,player){
-    const patternCompatible=new Set(['wand','bombardier','katana','firework_cannon','potion']);
-    const compatible=c=>c.key!=='patternCone'||patternCompatible.has(validWeapon(player?.weapon));
+    const compatible=c=>true;
     let pool=ROGUE_CARDS.filter(c=>!excluded.has(c.id) && compatible(c));
     if(!pool.length) pool=ROGUE_CARDS.filter(c=>compatible(c));
     let total=0; for(const c of pool) total+=rarityWeight[c.rarity]||1;
@@ -15665,6 +15702,25 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
   }
   function cardPublic(c){return {id:c.id,rarity:c.rarity,name:c.name,effect:c.effect,desc:simpleCardDesc(c),key:c.key,value:c.value};}
   function generateCards(player){const out=[],used=new Set();while(out.length<3){const c=weightedCard(used,player);used.add(c.id);out.push(cardPublic(c));}return out;}
+  /* Expose the LIVE Roguelike card source to the final multi-set draft layer.
+     The final layer lives outside this closure, so it cannot directly see
+     ROGUE_CARDS/weightedCard/cardPublic. Keep the real generator authoritative. */
+  Game.__plunkRogueCardPool=ROGUE_CARDS;
+  Game.__plunkRogueWeightedCard=weightedCard;
+  Game.__plunkRogueCardPublic=cardPublic;
+  Game.__plunkRogueGenerateCards=generateCards;
+  Game.__plunkRogueGenerateSet=function(player,blockedIds){
+    const globalUsed=blockedIds instanceof Set?blockedIds:new Set(blockedIds||[]);
+    const localUsed=new Set(globalUsed),out=[];
+    let guard=0;
+    while(out.length<3 && guard++<120){
+      const c=weightedCard(localUsed,player);
+      if(!c)break;
+      if(localUsed.has(c.id)){continue;}
+      localUsed.add(c.id);globalUsed.add(c.id);out.push(cardPublic(c));
+    }
+    return out;
+  };
   const baseSpawnWeaponProjectile=Game.spawnWeaponProjectile.bind(Game);
   Game.spawnWeaponProjectile=function(owner,angle,serial){const before=this.weaponProjectiles.length;baseSpawnWeaponProjectile(owner,angle,serial);const q=this.weaponProjectiles[this.weaponProjectiles.length-1];if(q&&this.weaponProjectiles.length>before&&owner){q.radius*=this.weaponSpec(owner).hitboxMult||1;}};
 
@@ -18305,7 +18361,7 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
   const priorSpec=Game.weaponSpec.bind(Game);
   Game.weaponSpec=function(p){
     const s=priorSpec(p),id=valid(p?.weapon);
-    if(id==='gyroblade')s.cooldown=10;
+    if(id==='gyroblade')s.cooldown=10*Math.max(0,1-(Number(p?.weaponUpgrades?.cooldownPct)||0));
     return s;
   };
 
@@ -18319,8 +18375,8 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
         p.gyroProjectileActive=true;
         p.weaponPhase='hold';
         // Lock the cooldown to the throw event; later cleanup must not zero it.
-        p.weaponCooldown=10;
-        p.weaponCooldownMax=10;
+        p.weaponCooldown=Math.max(0,Number(this.weaponSpec(p).cooldown)||0);
+        p.weaponCooldownMax=p.weaponCooldown;
       }
     }
     return result;
@@ -18348,7 +18404,7 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
         // Preserve the cooldown elapsed by updateWeapons(), regardless of whether
         // an older projectile wrapper removed the gyro or reset the owner state.
         p.weaponCooldown=savedCooldown;
-        p.weaponCooldownMax=10;
+        p.weaponCooldownMax=Math.max(0,Number(this.weaponSpec(p).cooldown)||0);
       }
       if(!p.gyroProjectileActive)continue;
       const tracked=p.gyroProjectileId
@@ -18414,8 +18470,8 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
           p.gyroProjectileId=q.id;
           p.gyroProjectileActive=true;
           p.weaponPhase='hold';
-          p.weaponCooldown=10;
-          p.weaponCooldownMax=10;
+          p.weaponCooldown=Math.max(0,Number(this.weaponSpec(p).cooldown)||0);
+          p.weaponCooldownMax=p.weaponCooldown;
         }
       }
     }
@@ -18490,8 +18546,8 @@ document.getElementById('btnSaveCust').addEventListener('click', ()=>{
         p.gyroProjectileId=q.id;
         p.gyroProjectileActive=true;
         p.weaponPhase='hold';
-        p.weaponCooldown=10;
-        p.weaponCooldownMax=10;
+        p.weaponCooldown=Math.max(0,Number(this.weaponSpec(p).cooldown)||0);
+        p.weaponCooldownMax=p.weaponCooldown;
       }
     }
     return result;
@@ -18976,7 +19032,7 @@ Game.weaponSpec=function(p){
   else if(id==='scythe'){if(Number.isFinite(Number(s.bladeLength)))s.bladeLength*=.85;if(Number.isFinite(Number(s.activeWidth)))s.activeWidth*=.85;if(Number.isFinite(Number(s.attackCenter)))s.attackCenter*=.85;}
   else if(id==='flail')s.attackActive=1.0;
   else if(id==='gyroblade'){
-    s.cooldown=gyroCooldownBase*Math.max(0,1-u.cooldownPct);
+    s.cooldown=10*Math.max(0,1-u.cooldownPct);
     s.projectileRange=(Number(s.projectileRange)||510)*gyroRangeMult;
     s.gyroGroundSpeed=(Number(s.gyroProjectileSpeed)||420)*gyroGroundSpeedMult;
   }
@@ -20639,6 +20695,127 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
   }
 
   Game.__plunkV84FinalWeaponBalance=true;
+})();
+</script>
+
+
+<script id="plunk-v118-pattern-hammers">
+(() => {
+  'use strict';
+  if(typeof Game==='undefined'||typeof NetworkManager==='undefined')return;
+  const valid=p=>typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):p?.weapon;
+  const kind='pattern_hammer';
+  const all=g=>(g.weaponProjectiles||(g.weaponProjectiles=[]));
+  const start=Game.startWeaponAttack.bind(Game);
+  Game.startWeaponAttack=function(p,angle,fromInput=false,remoteSeq=null){
+    const result=start(p,angle,fromInput,remoteSeq);
+    if(!result||!p||valid(p)!=='anchor'||!this.isHost)return result;
+    const count=Math.max(0,Math.floor(Number(p.weaponUpgrades?.patternConeCount)||0));
+    const interval=Math.max(1,Math.floor(Number(p.weaponUpgrades?.patternConeInterval)||2));
+    if(!count||Number(p.weaponActionCount)%interval!==0)return result;
+    const spread=Math.max(0,Number(p.weaponUpgrades?.patternConeSpread)||.24);
+    const base=Number.isFinite(Number(p.weaponAttackAngle))?Number(p.weaponAttackAngle):Number(angle)||0;
+    const spec=this.weaponSpec(p),r=Math.max(6,Number(spec.anchorHeadRadius)||11);
+    for(let i=0;i<count;i++){
+      const off=(i%2?-1:1)*(Math.floor(i/2)+1)*spread,a=this.normalizeAngle(base+off);
+      const serial=Number(p.weaponActionSerial)*100+i+1,id=`ph:${p.id}:${serial}`;
+      if(all(this).some(q=>q.id===id))continue;
+      const d=Math.max(28,(Number(p.radius)||26)*.95),x=p.x+Math.cos(a)*d,y=p.y+Math.sin(a)*d;
+      const q={id,kind,ownerId:p.id,x,y,prevX:x,prevY:y,angle:a,rotation:a,
+        vx:Math.cos(a)*(Number(spec.anchorThrowSpeed)||700),
+        vy:Math.sin(a)*(Number(spec.anchorThrowSpeed)||700)-(Number(spec.anchorThrowLift)||360),
+        radius:r,life:4,serial,patternExtra:true};
+      all(this).push(q);NetworkManager.broadcast({t:'weapon_shot',projectile:q},true);
+    }
+    return result;
+  };
+  const hit=(game,q,target,now)=>{
+    if(!game.isHost||!target||target.id===q.ownerId||!target.alive||target.spectator)return;
+    const dx=target.x-q.x,dy=target.y-q.y,reach=(Number(target.radius)||26)+q.radius;
+    if(dx*dx+dy*dy>reach*reach)return;
+    q.locks=q.locks||{};if((q.locks[target.id]||0)>now)return;
+    q.locks[target.id]=now+180;
+    const owner=game.players?.[q.ownerId];if(!owner)return;
+    if(game.weaponDeathEnabled?.())game.weaponEliminate(owner,target,'anchor',target.x,target.y);
+    else game.weaponApplyKnockback(owner,target,'anchor',Math.hypot(q.vx,q.vy));
+  };
+  const update=Game.updateWeaponProjectiles?.bind(Game);
+  if(update)Game.updateWeaponProjectiles=function(dt){
+    const projectiles=all(this),extras=projectiles.filter(q=>q?.kind===kind);
+    if(!extras.length)return update(dt);
+    this.weaponProjectiles=projectiles.filter(q=>q?.kind!==kind);
+    let result;
+    try{result=update(dt);}finally{this.weaponProjectiles=this.weaponProjectiles.concat(extras);}
+    const kept=[],now=performance.now(),map=this.map;
+    for(const q of extras){
+      const owner=this.players?.[q.ownerId];if(!owner||!owner.alive)continue;
+      const spec=this.weaponSpec(owner),gravity=Number(spec.anchorGravity)||1850;
+      q.life-=dt;
+      const steps=Math.max(1,Math.ceil(Math.hypot(q.vx*dt,q.vy*dt)/8));
+      let removed=q.life<=0;
+      for(let j=0;j<steps&&!removed;j++){
+        q.prevX=q.x;q.prevY=q.y;const sub=dt/steps;
+        q.vy+=gravity*sub;q.x+=q.vx*sub;q.y+=q.vy*sub;
+        q.rotation=Math.atan2(q.vy,q.vx);q.angle=q.rotation;
+        if(this.isHost)for(const target of Object.values(this.players||{}))hit(this,q,target,now);
+        if(q.x<-q.radius||q.y<-q.radius||q.x>(Number(map?.width)||0)+q.radius||q.y>(Number(map?.height)||0)+q.radius){removed=true;break;}
+        for(const plat of map?.platforms||[]){
+          if(!plat||plat.phase)continue;
+          const cp=this.closestPointOnRect(q.x,q.y,plat);
+          if(Number.isFinite(Number(cp?.dist))&&Number(cp.dist)<=q.radius){removed=true;break;}
+        }
+      }
+      if(!removed)kept.push(q);
+      else if(this.isHost)NetworkManager.broadcast({t:'weapon_pattern_hammer_remove',id:q.id},true);
+    }
+    this.weaponProjectiles=this.weaponProjectiles.filter(q=>q?.kind!==kind).concat(kept);
+    return result;
+  };
+  const handle=Game.handleNetData?.bind(Game);
+  if(handle)Game.handleNetData=function(pid,data){
+    if(data?.t==='weapon_pattern_hammer_remove'){
+      this.weaponProjectiles=(this.weaponProjectiles||[]).filter(q=>q?.id!==data.id);return;
+    }
+    return handle(pid,data);
+  };
+  const render=Game.renderWeaponProjectiles?.bind(Game);
+  if(render)Game.renderWeaponProjectiles=function(ctx){
+    const extras=all(this).filter(q=>q?.kind===kind),saved=this.weaponProjectiles;
+    this.weaponProjectiles=saved.filter(q=>q?.kind!==kind);
+    let result;try{result=render(ctx);}finally{this.weaponProjectiles=saved;}
+    if(!this.isWeaponry?.()||!extras.length)return result;
+    const cam=this.camera,z=cam.zoom||1;ctx.save();ctx.scale(z,z);ctx.translate(-cam.x,-cam.y);
+    for(const q of extras){
+      const owner=this.players?.[q.ownerId];if(!owner)continue;
+      const primary=typeof hsvToCss==='function'?hsvToCss(owner.cust?.hue??200,owner.cust?.saturation??80,92):'#eee';
+      const secondary=typeof hsvToCss==='function'?hsvToCss(owner.cust?.hue2??40,owner.cust?.saturation2??60,78):'#aaa';
+      ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.rotation||q.angle||0);ctx.globalAlpha=.78;
+      if(typeof this.drawWeaponAnchor==='function')this.drawWeaponAnchor(ctx,Number(this.weaponSpec(owner).anchorLength)||68,primary,secondary,true);
+      else{ctx.fillStyle=primary;ctx.fillRect(-20,-5,40,10);ctx.fillStyle=secondary;ctx.fillRect(12,-12,12,24);}
+      ctx.restore();
+    }
+    ctx.restore();return result;
+  };
+})();
+</script>
+
+
+<script id="plunk-v119-gyro-range-nerf">
+(() => {
+  'use strict';
+  if(typeof Game==='undefined')return;
+  const valid=p=>typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):p?.weapon;
+  const previous=Game.weaponSpec?.bind(Game);
+  if(!previous)return;
+  Game.weaponSpec=function(p){
+    const spec=previous(p);
+    if(spec&&valid(p)==='gyroblade'&&Number.isFinite(Number(spec.projectileRange))){
+      // Final range is 75% of the previously balanced base, while Rogue RANGE
+      // modifiers remain proportional because they have already been applied.
+      spec.projectileRange=Math.max(0,Number(spec.projectileRange)*0.75);
+    }
+    return spec;
+  };
 })();
 </script>
 
@@ -23437,117 +23614,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
   // 3x cooldown that is applied after its return completes.
   WEAPONS.flail.cooldown=2.25;
 
-  // Gyroblade cooldown is now a true post-disappearance cooldown:
-  // throwing starts with no cooldown, and the 5-second cooldown begins only
-  // once the thrown Gyroblade has actually disappeared.
-  const GYRO_POST_DISAPPEAR_COOLDOWN=5;
-  const valid=id=>typeof validWeapon==='function'?validWeapon(id||'sword'):(id||'sword');
-
-  const priorStart=Game.startWeaponAttack?.bind(Game);
-  if(priorStart){
-    Game.startWeaponAttack=function(p,angle,fromInput=false,remoteSeq=null){
-      const id=valid(p?.weapon);
-      const result=priorStart(p,angle,fromInput,remoteSeq);
-      if(result&&p&&id==='gyroblade'){
-        // Countdown does not begin until the projectile disappears.
-        p.weaponCooldown=0;
-        p.weaponCooldownMax=GYRO_POST_DISAPPEAR_COOLDOWN;
-        p._gyroCooldownAfterDisappear=false;
-        p._gyroCooldownDisappearSeen=false;
-      }
-      return result;
-    };
-  }
-
-  function startGyroPostDisappearCooldown(p){
-    if(!p||valid(p.weapon)!=='gyroblade')return;
-    p.weaponCooldown=GYRO_POST_DISAPPEAR_COOLDOWN;
-    p.weaponCooldownMax=GYRO_POST_DISAPPEAR_COOLDOWN;
-    p._gyroCooldownAfterDisappear=true;
-  }
-
-  // Detect every local/host-side projectile termination path after the existing
-  // projectile update chain has run.
-  const priorUpdateProjectiles=Game.updateWeaponProjectiles?.bind(Game);
-  if(priorUpdateProjectiles){
-    Game.updateWeaponProjectiles=function(dt){
-      const before=new Map();
-      for(const p of Object.values(this.players||{})){
-        if(p&&valid(p.weapon)==='gyroblade') before.set(p.id,{
-          active:!!p.gyroProjectileActive,
-          projectileId:p.gyroProjectileId||null,
-          cooldown:Number(p.weaponCooldown)||0,
-          phase:p.weaponPhase
-        });
-      }
-
-      priorUpdateProjectiles(dt);
-
-      const projectiles=this.weaponProjectiles||[];
-      for(const p of Object.values(this.players||{})){
-        const b=before.get(p?.id);
-        if(!b||valid(p.weapon)!=='gyroblade')continue;
-
-        const activeNow=!!p.gyroProjectileActive;
-        const trackedNow=p.gyroProjectileId
-          ? projectiles.some(q=>q?.kind==='gyroblade'&&q.id===p.gyroProjectileId)
-          : projectiles.some(q=>q?.kind==='gyroblade'&&q.ownerId===p.id);
-
-        // Projectile was active before this update but is genuinely gone now.
-        if(b.active && !activeNow && !trackedNow){
-          startGyroPostDisappearCooldown(p);
-          p._gyroCooldownDisappearSeen=true;
-        }
-
-        // Some older cleanup path removes the projectile first and clears the
-        // active flag during the same update. If the tracked id vanished, treat
-        // that as the disappearance boundary as well.
-        if(b.active && b.projectileId && !trackedNow && !activeNow && !p._gyroCooldownDisappearSeen){
-          startGyroPostDisappearCooldown(p);
-          p._gyroCooldownDisappearSeen=true;
-        }
-
-        // While the projectile is flying/rolling, never let legacy wrappers
-        // reintroduce a cooldown before the disappearance point.
-        if(activeNow || trackedNow){
-          p.weaponCooldown=0;
-          p.weaponCooldownMax=GYRO_POST_DISAPPEAR_COOLDOWN;
-          p._gyroCooldownAfterDisappear=false;
-          p._gyroCooldownDisappearSeen=false;
-        }
-      }
-    };
-  }
-
-  // Explicit pop/void-return messages are a second reliable disappearance path
-  // for non-hosts. Let the existing handler finish first, then start the local
-  // 5-second cooldown on the owner.
-  const priorHandle=Game.handleNetData?.bind(Game);
-  if(priorHandle){
-    Game.handleNetData=function(pid,data){
-      const result=priorHandle(pid,data);
-      if(data?.t==='weapon_gyro_pop'||(data?.t==='weapon_void_return'&&data?.weapon==='gyroblade')){
-        const p=this.players?.[data.ownerId];
-        if(p&&valid(p.weapon)==='gyroblade')startGyroPostDisappearCooldown(p);
-      }
-      return result;
-    };
-  }
-
-  // Host-side pop helpers can clear the active flag directly without emitting a
-  // network message to the same object. Wrap the final pop function as a last
-  // local safeguard.
-  const priorPop=Game.weaponGyroPop?.bind(Game);
-  if(priorPop){
-    Game.weaponGyroPop=function(q){
-      const ownerId=q?.ownerId;
-      const result=priorPop(q);
-      const p=ownerId!=null?this.players?.[ownerId]:null;
-      if(p&&valid(p.weapon)==='gyroblade'&&!p.gyroProjectileActive)startGyroPostDisappearCooldown(p);
-      return result;
-    };
-  }
-
+  // Gyroblade cooldown belongs to the throw-time controller.
   Game.__weaponFinalTuningV56=true;
 })();
 </script>
@@ -24448,7 +24515,7 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
     const radius=Number(game.weaponSpec(owner||{weapon:'firework_cannon'}).fireworkExplosionRadius||62);
     fireworkFx(game,q.x,q.y,owner||null,true);
     if(game.isHost&&owner){
-      areaHitTargets(game,owner,'firework_cannon',q.x,q.y,radius,Number(game.weaponSpec(owner).contactKnockback||390)*1.04,`fw:${q.id}`);
+      areaHitTargets(game,owner,'firework_cannon',q.x,q.y,radius,Number(game.weaponSpec(owner).contactKnockback||390)*1.04*1.5,`fw:${q.id}`);
       NetworkManager.broadcast({t:'new_weapon_firework_explode',id:q.id,x:q.x,y:q.y,ownerId:q.ownerId,radius},true);
     }
   }
@@ -25774,5 +25841,1037 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
   Game.__plunkV86FinalWeaponBalance=true;
 })();
 </script>
+<script id="plunk-v96-thrown-pattern-multiset">
+(function(){
+  'use strict';
+  if(typeof Game==='undefined') return;
+
+  const valid=id=>typeof validWeapon==='function'?validWeapon(id||'sword'):(id||'sword');
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const thrownIds=new Set(['bo_staff','chakram']);
+  const projectileThrowIds=new Set(['gyroblade','anchor','bo_staff','chakram']);
+  const projectileIds=new Set(['wand','bombardier','katana','firework_cannon','potion']);
+  const meleeIds=new Set(['sword','bo_staff','axe','flail','chakram','scythe','lance','twinblades','anchor','gyroblade','katana','pitchfork']);
+  const rarityWeight={common:54,uncommon:28,rare:12,epic:5,legendary:1,cursed:3};
+
+  /* ================================================================
+     1) ROGUELIKE PATTERN CARDS: make them available to every weapon.
+        The old file had several later wrappers that cleared the pattern
+        array for special weapons and a card-picker that filtered the card
+        out for most weapons. This final layer owns the pattern state.
+     ================================================================ */
+  function makeCardPublic(c){
+    if(!c)return null;
+    return {id:c.id,rarity:c.rarity,name:c.name,effect:c.effect,desc:c.desc,key:c.key,value:(c.value&&typeof c.value==='object')?Object.assign({},c.value):c.value};
+  }
+  function generateThree(player,usedGlobal){
+    /* Use the actual in-scope weighted picker exposed by the Roguelike closure.
+       This preserves rarity/weapon rules and guarantees the final draft receives
+       the same live cards the original draft would have shown. */
+    const blocked=usedGlobal instanceof Set?usedGlobal:new Set(usedGlobal||[]);
+    if(typeof Game.__plunkRogueGenerateSet==='function'){
+      return Game.__plunkRogueGenerateSet(player,blocked);
+    }
+    /* Defensive fallback for unusual script load ordering. */
+    const pool=Array.isArray(Game.__plunkRogueCardPool)?Game.__plunkRogueCardPool:[];
+    const out=[],local=new Set(blocked);
+    let guard=0;
+    while(out.length<3&&pool.length&&guard++<120){
+      const candidates=pool.filter(c=>c&&!local.has(c.id));
+      if(!candidates.length)break;
+      let total=0;for(const c of candidates)total+=rarityWeight[c.rarity]||1;
+      let r=Math.random()*total,pick=candidates[candidates.length-1];
+      for(const c of candidates){r-=rarityWeight[c.rarity]||1;if(r<=0){pick=c;break;}}
+      local.add(pick.id);blocked.add(pick.id);out.push(makeCardPublic(pick));
+    }
+    return out;
+  }
+  function patternAngles(game,p){
+    const u=p?.weaponUpgrades||{};
+    const count=Math.max(0,Math.floor(Number(u.patternConeCount)||0));
+    const interval=Math.max(1,Math.floor(Number(u.patternConeInterval)||2));
+    const spread=Math.max(0,Number(u.patternConeSpread)||0);
+    if(!count||((Number(p.weaponActionCount)||0)%interval)!==0)return [];
+    const base=Number.isFinite(Number(p.weaponAttackAngle))?Number(p.weaponAttackAngle):Number(p.weaponOrbitAngle)||0;
+    const out=[];
+    for(let i=0;i<count;i++){
+      const ring=Math.floor(i/2)+1;
+      const off=(i%2===0?-1:1)*ring*spread;
+      out.push(game.normalizeAngle(base+off));
+    }
+    return out;
+  }
+  function setPatternState(game,p){
+    const angles=patternAngles(game,p);
+    p._weaponPatternAngles=angles.slice();
+    p.weaponPatternAngles=angles.slice();
+    p._weaponPatternSerial=Number(p.weaponActionSerial)||0;
+    p._weaponPatternClones=angles.map((angle,i)=>({index:i,angle,serial:`pattern:${p.weaponActionSerial||0}:${i+1}`}));
+    if(projectileThrowIds.has(valid(p.weapon)))p._weaponPatternAngles=[];
+    return angles;
+  }
+
+  /* Top-up projectiles whose older attack implementations only see pattern
+     angles during their own start routine. These IDs use existing spawn APIs. */
+  function ensureClassicPatternProjectiles(game,p){
+    if(!game.isHost)return;
+    const id=valid(p?.weapon),angles=Array.isArray(p?._weaponPatternAngles)?p._weaponPatternAngles:[];
+    if(!angles.length)return;
+    const serial=Number(p.weaponActionSerial)||0;
+    if(id==='wand'&&typeof game.spawnWeaponProjectile==='function'){
+      for(let i=0;i<angles.length;i++){
+        const sid=serial*100+i+1;
+        const expected=`wp:${p.id}:${sid}`;
+        if(!(game.weaponProjectiles||[]).some(q=>q&&q.id===expected))game.spawnWeaponProjectile(p,angles[i],sid);
+      }
+    }else if(id==='bombardier'&&typeof game.spawnBombardierProjectile==='function'){
+      for(let i=0;i<angles.length;i++){
+        const sid=serial*100+i+1;
+        if(!(game.weaponProjectiles||[]).some(q=>q&&q.ownerId===p.id&&q.kind==='bombardier'&&String(q.serial)===String(sid)))
+          game.spawnBombardierProjectile(p,angles[i],sid);
+      }
+    }
+  }
+
+  function ensureNewWeaponPatternProjectiles(game,p){
+    if(!game.isHost)return;
+    const id=valid(p?.weapon),angles=Array.isArray(p?._weaponPatternAngles)?p._weaponPatternAngles:[];
+    if(!angles.length)return;
+    const s=typeof game.weaponSpec==='function'?game.weaponSpec(p):{};
+    const serial=Number(p.weaponActionSerial)||0;
+    const colorPrimary=typeof hsvToCss==='function'?hsvToCss(p.cust?.hue??200,p.cust?.saturation??80,94):'#fff';
+    void colorPrimary;
+    if(!game.newWeaponProjectiles)game.newWeaponProjectiles=[];
+    if(id==='firework_cannon'){
+      const center=Number(s.idleCenter||61),inner=Number(s.idleInner||20),outer=Number(s.idleOuter||64);
+      const barrel=outer-inner,start=Math.max(48,center+barrel*.62);
+      const speed=Number(s.projectileSpeed||220),range=Number(s.projectileRange||760),life=Number(s.fireworkLife||4.2),radius=Number(s.projectileRadius||8);
+      for(let i=0;i<angles.length;i++){
+        const sid=serial*100+i+1,idq=`fw:${p.id}:${sid}`;
+        if(game.newWeaponProjectiles.some(q=>q&&q.id===idq))continue;
+        const a=angles[i],x=p.x+Math.cos(a)*start,y=p.y+Math.sin(a)*start;
+        game.newWeaponProjectiles.push({id:idq,kind:'firework',ownerId:p.id,x,y,prevX:x,prevY:y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,angle:a,travel:0,maxRange:range,life,age:0,radius,serial:sid});
+      }
+    }else if(id==='potion'){
+      const start=Math.max(54,(Number(s.idleInner||20)+Number(s.idleOuter||64))*.48+13);
+      const speed=Number(s.projectileSpeed||590),lob=Number(s.potionLob||345),range=Number(s.projectileRange||560),radius=Number(s.projectileRadius||11);
+      for(let i=0;i<angles.length;i++){
+        const sid=serial*100+i+1,idq=`pt:${p.id}:${sid}`;
+        if(game.newWeaponProjectiles.some(q=>q&&q.id===idq))continue;
+        const a=angles[i],x=p.x+Math.cos(a)*start,y=p.y+Math.sin(a)*start;
+        game.newWeaponProjectiles.push({id:idq,kind:'potion',ownerId:p.id,x,y,prevX:x,prevY:y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed-lob,angle:a,travel:0,maxRange:range,life:4.0,age:0,radius,serial:sid});
+      }
+    }
+  }
+
+  const priorStart=Game.startWeaponAttack?.bind(Game);
+  if(priorStart){
+    Game.startWeaponAttack=function(p,angle,fromInput=false,remoteSeq=null){
+      const result=priorStart(p,angle,fromInput,remoteSeq);
+      if(!result||!p)return result;
+      setPatternState(this,p);
+      ensureClassicPatternProjectiles(this,p);
+      ensureNewWeaponPatternProjectiles(this,p);
+      if(this.isHost&&valid(p.weapon)==='gyroblade'){
+        const main=(this.weaponProjectiles||[]).find(q=>q?.kind==='gyroblade'&&q.ownerId===p.id&&Number(q.serial)===Number(p.weaponActionSerial));
+        if(main)for(const clone of p._weaponPatternClones||[]){
+          const a=clone.angle,serial=(Number(p.weaponActionSerial)||0)*100+clone.index+1,id=`gb:${p.id}:${serial}`;
+          if(this.weaponProjectiles.some(q=>q?.id===id))continue;
+          const spec=this.weaponSpec(p),speed=Math.hypot(Number(main.vx)||0,Number(main.vy)||0)||Number(spec.gyroProjectileSpeed)||420;
+          const radius=Math.max(0,Number(p.radius)||26)+11,x=p.x+Math.cos(a)*radius,y=p.y+Math.sin(a)*radius;
+          const q=Object.assign({},main,{id,serial,angle:a,gyroRotation:a,x,y,prevX:x,prevY:y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed-(Number(spec.gyroThrowLift)||360),travel:0,life:Number(spec.gyroLife)||3,ownerId:p.id,patternExtra:true});
+          this.weaponProjectiles.push(q);NetworkManager.broadcast({t:'weapon_shot',projectile:q},true);
+        }
+      }
+      return result;
+    };
+  }
+  const priorReceive=Game.receiveWeaponAttack?.bind(Game);
+  if(priorReceive){
+    Game.receiveWeaponAttack=function(data){
+      const result=priorReceive(data);
+      const p=data?.id?this.players?.[data.id]:null;
+      if(p&&result!==false){
+        setPatternState(this,p);
+        // Host-side receive has already run through startWeaponAttack, so this is
+        // just the client-side authoritative state/visual pattern setup.
+      }
+      return result;
+    };
+  }
+
+  /* The old weighted picker explicitly filtered Pattern cards to a short list.
+     Override card generation for the live draft closure by rebuilding each set
+     from the complete live card pool. */
+  const oldBegin=Game.beginWeaponRogueDraft?.bind(Game);
+  const oldRenderDraft=Game.renderWeaponRogueDraft?.bind(Game);
+  void oldBegin; void oldRenderDraft;
+
+  /* ================================================================
+     2) MULTI-SET ROGUELIKE DRAFT + !setcard
+        !setcard 2 means two separate 3-card picks before the round begins.
+        Sets are synchronized: everyone picks from set 1, everyone advances to
+        set 2, then everyone advances to the next game round.
+     ================================================================ */
+  function draftSetCount(game){
+    return clamp(Math.floor(Number(game.matchSettings?.weaponRogueCardSets)||Number(game.weaponRogueCardSets)||1),1,10);
+  }
+  Game.weaponRogueCardSets=draftSetCount(Game);
+
+  function ensurePickState(d,pid){
+    const count=Math.max(1,Number(d?.setCount)||1);
+    if(!d.picked || typeof d.picked!=='object')d.picked={};
+    if(!Array.isArray(d.picked[pid]))d.picked[pid]=Array(count).fill(false);
+    else if(d.picked[pid].length!==count)d.picked[pid]=Array.from({length:count},(_,i)=>!!d.picked[pid][i]);
+    return d.picked[pid];
+  }
+
+  function pickCountFor(d,pid){
+    return ensurePickState(d,pid).filter(Boolean).length;
+  }
+
+  function allPickedFor(d,pid){
+    return pickCountFor(d,pid)>=Math.max(1,Number(d?.setCount)||1);
+  }
+
+  function firstUnpickedSet(game,p){
+    const d=game?._weaponRogueDraft,count=Math.max(1,Number(d?.setCount)||1);
+    const picks=d&&p?ensurePickState(d,p.id):Array(count).fill(false);
+    for(let i=0;i<count;i++)if(!picks[i])return i;
+    return count;
+  }
+
+  function currentDraftCards(game){
+    const d=game?._weaponRogueDraft;if(!d)return [];
+    const me=game.players?.[game.myId];if(!me)return [];
+    const count=Math.max(1,Number(d.setCount)||1);
+    const idx=Math.max(0,Math.min(count-1,Number(me.weaponRogueDraftSetIndex)||0));
+    const sets=Array.isArray(me.weaponRogueCardSets)?me.weaponRogueCardSets:null;
+    return sets?.[idx]||[];
+  }
+
+  function localPickedSet(game,idx){
+    return !!(game._weaponRogueLocalPickedSets instanceof Set && game._weaponRogueLocalPickedSets.has(Number(idx)));
+  }
+
+  function localNextSet(game,p){
+    const d=game?._weaponRogueDraft,count=Math.max(1,Number(d?.setCount)||1);
+    for(let i=0;i<count;i++)if(!localPickedSet(game,i))return i;
+    return count;
+  }
+
+  function progressSnapshot(game){
+    const d=game?._weaponRogueDraft;
+    if(!d)return {finished:0,total:0,pickedSetsByPlayer:{},setIndexByPlayer:{}};
+    const pickedSetsByPlayer={},setIndexByPlayer={};
+    let finished=0;
+    for(const id of d.participants||[]){
+      const arr=ensurePickState(d,id);
+      pickedSetsByPlayer[id]=arr.map(Boolean);
+      const done=arr.every(Boolean);
+      if(done)finished++;
+      const p=game.players?.[id];
+      setIndexByPlayer[id]=done?Number(d.setCount)||1:(Number(p?.weaponRogueDraftSetIndex)||arr.findIndex(v=>!v));
+    }
+    return {finished,total:(d.participants||[]).length,pickedSetsByPlayer,setIndexByPlayer};
+  }
+
+  function renderDraft(data){
+    const o=document.getElementById('weaponRogueOverlay'),cardsEl=document.getElementById('weaponRogueCards');
+    if(!o||!cardsEl)return;
+
+    const d=this._weaponRogueDraft;
+    const cards=data?.cards||[];
+    const setCount=Math.max(1,Number(data?.setCount??d?.setCount)||1);
+    const rawIdx=Number(data?.setIndex??this.players?.[this.myId]?.weaponRogueDraftSetIndex??0);
+    const setIndex=Math.max(0,Math.min(setCount-1,Number.isFinite(rawIdx)?rawIdx:0));
+    const pickedAll=!!data?.picked;
+    const pending=!!data?.pending || !!(this._weaponRoguePendingSets instanceof Set && this._weaponRoguePendingSets.has(setIndex));
+    const chosen=Number.isInteger(data?.chosenIndex)?Number(data.chosenIndex):-1;
+    const finished=Number(data?.finishedPlayers)||0;
+    const total=Number(data?.total)||0;
+    const title=document.getElementById('weaponRogueTitle');
+    if(title){
+      title.textContent=setCount>1
+        ? `ROUND ${Number(data?.round)||''} UPGRADE · SET ${setIndex+1}/${setCount}`
+        : `ROUND ${Number(data?.round)||''} UPGRADE`;
+    }
+    const sub=document.getElementById('weaponRogueSub');
+    if(sub){
+      sub.textContent=pickedAll
+        ? 'ALL CARDS CHOSEN — WAITING FOR EVERYONE…'
+        : pending
+          ? 'CARD PICK SENT…'
+          : (setCount>1 ? `CHOOSE 1 OF THESE 3 UPGRADES · ${setIndex+1}/${setCount}` : 'CHOOSE 1 OF THESE 3 UPGRADES');
+    }
+    const progress=document.getElementById('weaponRogueProgress');
+    if(progress)progress.textContent=`${finished} / ${total} PLAYERS FINISHED`;
+    const timer=document.getElementById('weaponRogueTimer');
+    if(timer){
+      const left=Math.max(0,Math.ceil(((d?.deadline||Date.now()+20000)-Date.now())/1000));
+      timer.textContent=String(left);timer.classList.toggle('warning',left<=5);
+    }
+
+    const multiplierBox=document.getElementById('weaponRogueMultiplierBox');
+    if(multiplierBox){
+      const me=this.players?.[this.myId],pick=(Number(me?.weaponRoguePickCount)||0)+1;
+      let factor=1;
+      for(const amp of me?.weaponRogueAmplifiers||[]){
+        const interval=Math.max(1,Math.floor(Number(amp.interval)||3));
+        if(pick>Number(amp.acquiredAt||0)&&(pick-Number(amp.acquiredAt||0))%interval===0)factor*=Math.max(1,Number(amp.multiplier)||1);
+      }
+      const display=Number.isInteger(factor)?String(factor):factor.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');
+      multiplierBox.querySelector('.multiplier-value').textContent=display+'×';
+      multiplierBox.classList.toggle('boosted',factor>1);
+      const rect=o.querySelector('.weapon-rogue-panel')?.getBoundingClientRect();
+      if(rect){multiplierBox.style.left=Math.max(4,rect.left-84)+'px';multiplierBox.style.top=Math.max(4,rect.top+Math.min(78,Math.max(12,rect.height*.13)))+'px';}
+    }
+    cardsEl.innerHTML='';
+    cards.forEach((c,i)=>{
+      const chosenNow=chosen===i;
+      const b=document.createElement('button');
+      b.type='button';
+      b.className=`weapon-rogue-card ${c.rarity||'common'}${chosenNow?' chosen':''}${(pickedAll||pending)?' disabled':''}`;
+      b.disabled=pickedAll||pending;
+      b.innerHTML=`<span class="weapon-rogue-card-shape"></span><span class="weapon-rogue-rarity">${typeof escRogue==='function'?escRogue(c.rarity):String(c.rarity||'COMMON')}</span><div class="weapon-rogue-card-title">${typeof escRogue==='function'?escRogue(c.name):String(c.name||'')}</div><div class="weapon-rogue-card-effect">${typeof escRogue==='function'?escRogue(c.effect):String(c.effect||'')}</div><div class="weapon-rogue-card-desc">${typeof escRogue==='function'?escRogue(c.desc):String(c.desc||'')}</div><div class="weapon-rogue-card-foot">CHOOSE THIS UPGRADE</div>`;
+      b.addEventListener('click',()=>this.chooseWeaponRogueCard(i));
+      cardsEl.appendChild(b);
+    });
+
+    o.classList.add('active');o.classList.remove('starting-soon');o.setAttribute('aria-hidden','false');
+    if(this._weaponRogueTimerInt)clearInterval(this._weaponRogueTimerInt);
+    this._weaponRogueTimerInt=setInterval(()=>{
+      const draft=this._weaponRogueDraft;
+      if(!draft){clearInterval(this._weaponRogueTimerInt);this._weaponRogueTimerInt=null;return;}
+      const el=document.getElementById('weaponRogueTimer');
+      if(el){
+        const left=Math.max(0,Math.ceil(((draft.deadline||Date.now()+Math.max(20000,(Number(draft.setCount)||1)*10000))-Date.now())/1000));
+        el.textContent=String(left);el.classList.toggle('warning',left<=5);
+      }
+    },100);
+  }
+
+  function scheduleDraftTimeout(game){
+    const d=game._weaponRogueDraft;if(!d)return;
+    if(d._timer)clearTimeout(d._timer);
+    const ref=d;
+    const durationMs=Math.max(20000,Math.max(1,Number(d.setCount)||1)*10000);
+    d.deadline=Date.now()+durationMs;
+    d._timer=setTimeout(()=>{if(game._weaponRogueDraft===ref)game.finishWeaponRogueDraft(true);},durationMs);
+  }
+
+  Game.renderWeaponRogueDraft=renderDraft;
+
+  Game.beginWeaponRogueDraft=function(nextRound,transitionId,payload){
+    if(!this.isHost||!this.isWeaponry()||!this.matchSettings?.weaponRoguelike)return;
+    UI.hideRoundIntermission();document.getElementById('screen-results')?.classList.remove('active');
+
+    const participants=Object.values(this.players||{}).filter(p=>p&&!p.spectator);
+    const setCount=draftSetCount(this),drafts={},picked={};
+    for(const p of participants){
+      const sets=[],used=new Set();
+      for(let i=0;i<setCount;i++)sets.push(generateThree(p,used));
+      p.weaponRogueCardSets=sets;
+      p.weaponRogueDraftRound=Number(nextRound)||0;
+      p.weaponRogueDraftSetIndex=0;
+      p.weaponRogueCards=sets[0]||[];
+      drafts[p.id]=sets;
+      picked[p.id]=Array(setCount).fill(false);
+    }
+
+    this._weaponRogueDraft={
+      round:Number(nextRound)||0,
+      transitionId:Number(transitionId)||0,
+      payload,
+      setCount,
+      drafts,
+      picked,
+      participants:participants.map(p=>p.id),
+      deadline:Date.now()+Math.max(20000,setCount*10000)
+    };
+    this._weaponRoguePickPending=false;
+    this._weaponRogueChosenIndex=null;
+    this._weaponRoguePendingSets=new Set();
+    this._weaponRogueLocalPickedSets=new Set();
+    scheduleDraftTimeout(this);
+
+    const me=this.players[this.myId];
+    const snap=progressSnapshot(this);
+    this.renderWeaponRogueDraft({
+      round:nextRound,
+      cards:me?.weaponRogueCardSets?.[0]||[],
+      picked:false,
+      pending:false,
+      chosenIndex:-1,
+      finishedPlayers:snap.finished,
+      total:snap.total,
+      setIndex:0,
+      setCount
+    });
+    NetworkManager.broadcast({
+      t:'weapon_draft_start',
+      data:{round:nextRound,transitionId,payload,drafts,total:participants.length,deadline:this._weaponRogueDraft.deadline,setCount}
+    },true);
+    this.updateWeaponRogueDraftProgress();
+    this.checkWeaponRogueDraftComplete();
+  };
+
+  Game.receiveWeaponRogueDraftStart=function(data){
+    if(this.isHost||!data||!this.isWeaponry())return;
+    const myId=this.myId,sets=(data.drafts||{})[myId]||[],setCount=Math.max(1,Number(data.setCount)||1);
+    this._weaponRogueDraft={
+      round:Number(data.round)||0,
+      transitionId:Number(data.transitionId)||0,
+      payload:data.payload||null,
+      drafts:data.drafts||{},
+      picked:{},
+      participants:Object.keys(data.drafts||{}),
+      deadline:Number(data.deadline)||Date.now()+Math.max(20000,setCount*10000),
+      setCount
+    };
+    for(const id of this._weaponRogueDraft.participants)this._weaponRogueDraft.picked[id]=Array(setCount).fill(false);
+
+    const me=this.players[myId];
+    if(me){
+      me.weaponRogueCardSets=sets;
+      me.weaponRogueDraftSetIndex=0;
+      me.weaponRogueCards=sets[0]||[];
+      me.weaponRogueDraftRound=this._weaponRogueDraft.round;
+    }
+    this._weaponRoguePickPending=false;
+    this._weaponRoguePendingSets=new Set();
+    this._weaponRogueLocalPickedSets=new Set();
+    this._weaponRogueChosenIndex=null;
+    this.renderWeaponRogueDraft({
+      round:data.round,
+      cards:sets[0]||[],
+      picked:false,
+      pending:false,
+      chosenIndex:-1,
+      finishedPlayers:0,
+      total:this._weaponRogueDraft.participants.length,
+      setIndex:0,
+      setCount
+    });
+  };
+
+  Game.chooseWeaponRogueCard=function(index){
+    const d=this._weaponRogueDraft;if(!d||!this.isWeaponry())return;
+    const me=this.players[this.myId];if(!me||me.spectator)return;
+
+    const setIndex=Math.max(0,Math.min(Math.max(1,Number(d.setCount)||1)-1,Number(me.weaponRogueDraftSetIndex)||0));
+    const cards=currentDraftCards(this),c=cards[Number(index)];
+    if(!c||localPickedSet(this,setIndex))return;
+
+    const pendingSets=this._weaponRoguePendingSets instanceof Set?(this._weaponRoguePendingSets=new Set(this._weaponRoguePendingSets)):new Set();
+    if(pendingSets.has(setIndex))return;
+    pendingSets.add(setIndex);
+    this._weaponRoguePendingSets=pendingSets;
+    this._weaponRogueLocalPickedSets=this._weaponRogueLocalPickedSets instanceof Set?this._weaponRogueLocalPickedSets:new Set();
+    this._weaponRogueLocalPickedSets.add(setIndex);
+
+    if(this.isHost){
+      this.receiveWeaponRoguePick(this.myId,{index:Number(index),setIndex});
+      return;
+    }
+
+    const count=Math.max(1,Number(d.setCount)||1);
+    let next=count;
+    for(let i=0;i<count;i++)if(!this._weaponRogueLocalPickedSets.has(i)){next=i;break;}
+    if(next<count){
+      me.weaponRogueDraftSetIndex=next;
+      me.weaponRogueCards=me.weaponRogueCardSets?.[next]||[];
+      const snap=progressSnapshot(this);
+      this.renderWeaponRogueDraft({round:d.round,cards:me.weaponRogueCards,picked:false,pending:false,chosenIndex:-1,finishedPlayers:snap.finished,total:snap.total,setIndex:next,setCount:count});
+    }else{
+      const snap=progressSnapshot(this);
+      this.renderWeaponRogueDraft({round:d.round,cards:[],picked:true,pending:false,chosenIndex:Number(index),finishedPlayers:snap.finished,total:snap.total,setIndex:count-1,setCount:count});
+    }
+
+    NetworkManager.sendToHost({t:'weapon_draft_pick',index:Number(index),setIndex},true);
+  };
+
+  Game.receiveWeaponRoguePick=function(pid,data){
+    if(!this.isHost)return;
+    const d=this._weaponRogueDraft;if(!d||this.state!=='roundResults')return;
+    if(!d.participants.includes(pid))return;
+    const p=this.players[pid];if(!p||p.spectator)return;
+
+    const setCount=Math.max(1,Number(d.setCount)||1);
+    const setIndex=Math.max(0,Math.min(setCount-1,Number(data?.setIndex)||0));
+    const picks=ensurePickState(d,pid);
+    if(picks[setIndex])return;
+
+    const sets=d.drafts?.[pid]||[],cards=sets[setIndex]||[],c=cards[Number(data?.index)];
+    if(!c)return;
+
+    this.applyWeaponRogueUpgrade(p,c);
+    picks[setIndex]=true;
+
+    if(pid===this.myId){
+      this._weaponRoguePendingSets=this._weaponRoguePendingSets instanceof Set?this._weaponRoguePendingSets:new Set();
+      this._weaponRoguePendingSets.delete(setIndex);
+      this._weaponRogueLocalPickedSets=this._weaponRogueLocalPickedSets instanceof Set?this._weaponRogueLocalPickedSets:new Set();
+      this._weaponRogueLocalPickedSets.add(setIndex);
+    }
+
+    const next=firstUnpickedSet(this,p);
+    p.weaponRogueDraftSetIndex=Math.min(setCount-1,next);
+    p.weaponRogueCards=next<setCount?(p.weaponRogueCardSets?.[next]||[]):[];
+
+    this.updateWeaponRogueDraftProgress();
+    this.checkWeaponRogueDraftComplete();
+  };
+
+  Game.updateWeaponRogueDraftProgress=function(){
+    const d=this._weaponRogueDraft;if(!d)return;
+    const snap=progressSnapshot(this);
+    const me=this.players[this.myId];
+    const localDone=this.isHost?allPickedFor(d,this.myId):localNextSet(this,me)>=d.setCount;
+
+    if(me){
+      const idx=localDone
+        ? Math.max(0,d.setCount-1)
+        : Math.max(0,Math.min(d.setCount-1,Number(me.weaponRogueDraftSetIndex)||0));
+      me.weaponRogueCards=localDone?[]:(me.weaponRogueCardSets?.[idx]||[]);
+      me.weaponRogueDraftSetIndex=idx;
+    }
+
+    this.renderWeaponRogueDraft({
+      round:d.round,
+      cards:localDone?[]:(me?.weaponRogueCards||[]),
+      picked:localDone,
+      pending:false,
+      chosenIndex:-1,
+      finishedPlayers:snap.finished,
+      total:snap.total,
+      setIndex:localDone?d.setCount-1:me?.weaponRogueDraftSetIndex||0,
+      setCount:d.setCount
+    });
+
+    if(this.isHost){
+      NetworkManager.broadcast({
+        t:'weapon_draft_progress',
+        data:{
+          round:d.round,
+          setCount:d.setCount,
+          pickedSetsByPlayer:snap.pickedSetsByPlayer,
+          setIndexByPlayer:snap.setIndexByPlayer,
+          finishedPlayers:snap.finished,
+          total:snap.total
+        }
+      },true);
+    }
+  };
+
+  Game.receiveWeaponRogueDraftProgress=function(data){
+    const d=this._weaponRogueDraft;
+    if(this.isHost||!d||!data||Number(data.round)!==Number(d.round))return;
+    const setCount=Math.max(1,Number(data.setCount)||Number(d.setCount)||1);
+    d.setCount=setCount;
+    const participants=Array.isArray(data.participants)?data.participants.filter(id=>d.drafts?.[id]):d.participants;
+    if(Array.isArray(participants))d.participants=participants;
+    for(const id of d.participants){
+      const picks=Array.isArray(data.pickedSetsByPlayer?.[id])?data.pickedSetsByPlayer[id]:[];
+      d.picked[id]=Array.from({length:setCount},(_,i)=>!!picks[i]);
+    }
+    const myId=this.myId,me=this.players[myId];
+    const serverPicks=d.picked[myId]||Array(setCount).fill(false);
+    const localPicked=this._weaponRogueLocalPickedSets instanceof Set?this._weaponRogueLocalPickedSets:new Set();
+    const pending=this._weaponRoguePendingSets instanceof Set?this._weaponRoguePendingSets:new Set();
+    for(const i of Array.from(pending))if(serverPicks[i])pending.delete(i);
+    this._weaponRoguePendingSets=pending;
+    const merged=Array.from({length:setCount},(_,i)=>!!serverPicks[i]||localPicked.has(i)||pending.has(i));
+    this._weaponRogueLocalPickedSets=new Set(merged.flatMap((v,i)=>v?[i]:[]));
+    const done=merged.every(Boolean);
+    const firstOpen=merged.findIndex(v=>!v);
+    const next=done?setCount-1:Math.max(0,firstOpen);
+    if(me){
+      me.weaponRogueDraftSetIndex=next;
+      me.weaponRogueCards=done?[]:(me.weaponRogueCardSets?.[next]||[]);
+    }
+    const finished=d.participants.filter(id=>d.picked[id]?.every(Boolean)).length;
+    const total=d.participants.length;
+    this.renderWeaponRogueDraft({
+      round:d.round,cards:done?[]:(me?.weaponRogueCards||[]),picked:done,
+      pending:pending.has(next),chosenIndex:-1,finishedPlayers:finished,total,
+      setIndex:next,setCount
+    });
+  };
+
+  Game.checkWeaponRogueDraftComplete=function(){
+    if(!this.isHost)return;
+    const d=this._weaponRogueDraft;if(!d)return;
+    d.participants=d.participants.filter(id=>this.players[id]&&!this.players[id].spectator);
+    for(const id of d.participants)if(!allPickedFor(d,id))return;
+    this.finishWeaponRogueDraft(false);
+  };
+
+  Game.finishWeaponRogueDraft=function(timedOut=false){
+    if(!this.isHost)return;
+    const d=this._weaponRogueDraft;if(!d)return;
+    if(d._timer){clearTimeout(d._timer);d._timer=null;}
+    const upgrades={};
+    for(const id of d.participants){
+      const p=this.players[id];
+      if(p)upgrades[id]={
+        stats:Object.assign({},p.weaponUpgrades||{}),
+        pickCount:Number(p.weaponRoguePickCount)||0,
+        amplifiers:(p.weaponRogueAmplifiers||[]).map(a=>Object.assign({},a))
+      };
+    }
+    const nextRound=d.round,transitionId=d.transitionId,payload=d.payload,startAt=Date.now()+3000,setCount=d.setCount;
+    this._weaponRogueDraft=null;this.hideWeaponRogueDraft();
+    NetworkManager.broadcast({t:'weapon_draft_done',data:{round:nextRound,transitionId,upgrades,startAt,setCount}},true);
+    if(this.roundTransitionId!==transitionId||this.state!=='roundResults')return;
+    this.showWeaponRogueStartCountdown(startAt,nextRound);
+    const startNext=()=>{
+      if(this.roundTransitionId!==transitionId||this.state!=='roundResults')return;
+      this.roundNumber=nextRound;
+      const startFacings={};for(const id in this.players)startFacings[id]=this.players[id].facing||1;
+      const spectatorStates={};for(const id in this.players)spectatorStates[id]=!!this.players[id].spectator;
+      const nextSpawnPositions=this.getNextRoundSpawnPositions();
+      NetworkManager.broadcast({t:'round_start',round:nextRound,scores:this.scores,teamScores:this.teamScores,transitionId,facings:startFacings,spawnAssignments:this.spawnAssignments,spawnPositions:nextSpawnPositions,spectatorStates,previousRoundResult:payload},true);
+      this.beginRoundImmediate(nextRound,transitionId,nextSpawnPositions);
+    };
+    this._roundTransitionTimer=setTimeout(()=>{this.hideWeaponRogueDraft();startNext();},Math.max(0,startAt-Date.now()));
+  };
+
+  /* ================================================================
+     3) BO STAFF + CHAKRAM: fully own non-idle simulation/collision.
+        The old update loop can no longer move them or run a radial hit test.
+        During HOLD/ACTIVE, collision tests the current thrown object only.
+        During EXTEND/RETURN, a short sweep covers the weapon's movement.
+     ================================================================ */
+  function circleSegment(px,py,r,a,b){
+    const dx=b.x-a.x,dy=b.y-a.y,len2=dx*dx+dy*dy;
+    const t=len2>1e-9?clamp(((px-a.x)*dx+(py-a.y)*dy)/len2,0,1):0;
+    const qx=a.x+dx*t,qy=a.y+dy*t,rx=px-qx,ry=py-qy;
+    return rx*rx+ry*ry<=r*r;
+  }
+  function boCurrentHit(target,g,s){
+    const L=Math.max(1,Number(s.staffLength||g.length||92)),half=Math.max(2,Number(s.activeWidth||7)*.5),reach=Math.max(0,Number(target.radius)||26)+half+1;
+    const a=Number(g.rotation)||0,cx=Number(g.worldX),cy=Number(g.worldY),dx=Math.cos(a)*L*.5,dy=Math.sin(a)*L*.5;
+    return circleSegment(Number(target.x),Number(target.y),reach,{x:cx-dx,y:cy-dy},{x:cx+dx,y:cy+dy});
+  }
+  function chakramCurrentHit(target,g,s){
+    const rr=Math.max(1,Number(g.discRadius||s.discRadius||17)),reach=Math.max(0,Number(target.radius)||26)+rr;
+    const dx=Number(target.x)-Number(g.worldX),dy=Number(target.y)-Number(g.worldY);return dx*dx+dy*dy<=reach*reach;
+  }
+  function hitThrown(game,p,target,g,s,id,key){
+    const locks=p._authoritativeThrownLocks||(p._authoritativeThrownLocks={});
+    const now=performance.now(),lockKey=`${id}:${key}:${target.id}`,lockMs=Math.max(.035,Number(s.contactCooldown)||.20)*1000;
+    if(Number(locks[lockKey]||0)>now)return;
+    const hit=id==='bo_staff'?boCurrentHit(target,g,s):chakramCurrentHit(target,g,s);if(!hit)return;
+    locks[lockKey]=now+lockMs;
+    if(game.weaponDeathEnabled?.())game.weaponEliminate(p,target,id,target.x,target.y);
+    else game.weaponApplyKnockback(p,target,id,typeof game.weaponHitSpeed==='function'?game.weaponHitSpeed(p,id):Number(s.contactKnockback)||320);
+    target.hitFlash=Math.max(Number(target.hitFlash)||0,10);target.lastHitBy=p.id;target.lastHitAt=now;
+  }
+  function moveThrown(game,p,id,s,dt){
+    const a=Number(p.weaponAttackAngle)||Number(p.weaponOrbitAngle)||0;
+    const start=id==='bo_staff'?Number(s.throwStart||34):Number(s.idleCenter||58);
+    const end=id==='bo_staff'?Math.max(start,Number(s.throwEnd||224)):Math.max(start,Number(s.throwRange||158));
+    p.weaponPhaseTime=(Number(p.weaponPhaseTime)||0)+dt;
+    if(id==='bo_staff'){
+      if(p.weaponPhase==='extend'){
+        const t=clamp(p.weaponPhaseTime/Math.max(.001,Number(s.attackExtend)||.12),0,1),e=t*t*(3-2*t),d=start+(end-start)*e;
+        p.weaponWorldX=Number(p.weaponThrowOriginX||p.x)+Math.cos(a)*d;p.weaponWorldY=Number(p.weaponThrowOriginY||p.y)+Math.sin(a)*d;
+        return;
+      }
+      if(p.weaponPhase==='hold')return;
+      if(p.weaponPhase==='return'){
+        const tx=p.x+Math.cos(a)*(Number(s.idleCenter)||58),ty=p.y+Math.sin(a)*(Number(s.idleCenter)||58),dx=tx-p.weaponWorldX,dy=ty-p.weaponWorldY,dist=Math.hypot(dx,dy),step=Math.max(0,Number(s.returnSpeed)||420)*dt;
+        if(dist<=Math.max(4,step)){p.weaponWorldX=tx;p.weaponWorldY=ty;game.endWeaponAttack(p);}
+        else {p.weaponWorldX+=dx/dist*step;p.weaponWorldY+=dy/dist*step;}
+      }
+    }else{
+      if(p.weaponPhase==='extend'){
+        const t=clamp(p.weaponPhaseTime/Math.max(.001,Number(s.attackExtend)||.14),0,1),e=t*t*(3-2*t),d=start+(end-start)*e;
+        p.weaponWorldX=Number(p.weaponThrowOriginX||p.x)+Math.cos(a)*d;p.weaponWorldY=Number(p.weaponThrowOriginY||p.y)+Math.sin(a)*d;
+        if(t>=1){p.weaponWorldX=Number(p.weaponThrowOriginX||p.x)+Math.cos(a)*end;p.weaponWorldY=Number(p.weaponThrowOriginY||p.y)+Math.sin(a)*end;p.weaponPhase='hold';p.weaponPhaseTime=0;}
+        return;
+      }
+      if(p.weaponPhase==='active'){p.weaponActiveRotation=(Number(p.weaponActiveRotation)||0)+Number(s.spinSpeed||8)*dt;return;}
+      if(p.weaponPhase==='hold'){p.weaponActiveRotation=(Number(p.weaponActiveRotation)||0)+Number(s.spinSpeed||8)*dt;return;}
+      if(p.weaponPhase==='return'){
+        const tx=p.x+Math.cos(a)*(Number(s.idleCenter)||58),ty=p.y+Math.sin(a)*(Number(s.idleCenter)||58),dx=tx-p.weaponWorldX,dy=ty-p.weaponWorldY,dist=Math.hypot(dx,dy),step=Math.max(2600,Number(s.returnSpeed)||420)*dt;
+        p.weaponActiveRotation=(Number(p.weaponActiveRotation)||0)+Number(s.spinSpeed||8)*dt;
+        if(dist<=Math.max(4,step)){p.weaponWorldX=tx;p.weaponWorldY=ty;game.endWeaponAttack(p);}else{p.weaponWorldX+=dx/dist*step;p.weaponWorldY+=dy/dist*step;}
+      }
+    }
+  }
+  function thrownGeometry(game,p,id,s,angleOverride=null){
+    const a=angleOverride==null?(Number(p.weaponAttackAngle)||Number(p.weaponOrbitAngle)||0):Number(angleOverride);
+    const q=Object.assign({},p,{weaponAttackAngle:a,weaponOrbitAngle:a});
+    if(id==='bo_staff'){
+      q.weaponWorldX=p.weaponWorldX;q.weaponWorldY=p.weaponWorldY;
+    }else{
+      const d=Math.hypot(Number(p.weaponWorldX)-Number(p.x),Number(p.weaponWorldY)-Number(p.y))||Number(s.idleCenter)||58;
+      q.weaponWorldX=p.x+Math.cos(a)*d;q.weaponWorldY=p.y+Math.sin(a)*d;
+    }
+    return game.weaponRenderGeometry(q);
+  }
+
+  const oldUpdate=Game.updateWeapons?.bind(Game);
+  if(oldUpdate){
+    Game.updateWeapons=function(dt){
+      if(!this.isWeaponry?.())return oldUpdate(dt);
+      const masked=[];
+      for(const p of Object.values(this.players||{})){
+        if(!p||!thrownIds.has(valid(p.weapon))||p.weaponPhase==='idle')continue;
+        masked.push({p,weapon:p.weapon,phase:p.weaponPhase,phaseTime:p.weaponPhaseTime,alive:p.alive,spectator:p.spectator,worldX:p.weaponWorldX,worldY:p.weaponWorldY,attackAngle:p.weaponAttackAngle,orbitAngle:p.weaponOrbitAngle,activeRotation:p.weaponActiveRotation,cooldown:p.weaponCooldown,cooldownMax:p.weaponCooldownMax,hitIds:p.weaponHitIds,locks:p.weaponContactLocks,throwOriginX:p.weaponThrowOriginX,throwOriginY:p.weaponThrowOriginY,returnX:p.weaponReturnX,returnY:p.weaponReturnY});
+        p.weapon='sword';p.weaponPhase='idle';p.weaponPhaseTime=0;p.alive=false;p.spectator=false;p.weaponHitIds={};p.weaponContactLocks={};
+      }
+      oldUpdate(dt);
+      for(const m of masked){
+        const p=m.p,maskedCooldown=Number(p.weaponCooldown);
+        p.weapon=m.weapon;p.weaponPhase=m.phase;p.weaponPhaseTime=m.phaseTime;p.alive=m.alive;p.spectator=m.spectator;
+        p.weaponWorldX=m.worldX;p.weaponWorldY=m.worldY;p.weaponAttackAngle=m.attackAngle;p.weaponOrbitAngle=m.orbitAngle;p.weaponActiveRotation=m.activeRotation;p.weaponCooldown=Number.isFinite(maskedCooldown)?maskedCooldown:m.cooldown;p.weaponCooldownMax=m.cooldownMax;p.weaponHitIds=m.hitIds;p.weaponContactLocks=m.locks;p.weaponThrowOriginX=m.throwOriginX;p.weaponThrowOriginY=m.throwOriginY;p.weaponReturnX=m.returnX;p.weaponReturnY=m.returnY;
+      }
+      const now=performance.now();
+      for(const p of Object.values(this.players||{})){
+        const id=valid(p?.weapon);if(!p||!thrownIds.has(id)||!p.alive||p.spectator||p.weaponPhase==='idle')continue;
+        const s=this.weaponSpec(p)||{},prevX=Number(p.weaponWorldX),prevY=Number(p.weaponWorldY),prevRot=Number(p.weaponAttackAngle)||Number(p.weaponOrbitAngle)||0;
+        moveThrown(this,p,id,s,dt);
+        const g=this.weaponRenderGeometry(p);
+        if(!g||!Number.isFinite(Number(g.worldX))||!Number.isFinite(Number(g.worldY)))continue;
+        for(const target of Object.values(this.players||{})){
+          if(!target||target.id===p.id||!target.alive||target.spectator)continue;
+          // During HOLD/ACTIVE, use exact current geometry only. This eliminates the
+          // old false hit path that could stretch all the way back to the owner.
+          if(p.weaponPhase==='hold'||p.weaponPhase==='active'||(p.weaponPhase==='return'&&Math.hypot(Number(g.worldX)-prevX,Number(g.worldY)-prevY)<120)){
+            hitThrown(this,p,target,g,s,id,'main');
+          }else{
+            // Extend/long return: sweep the actual thrown object's center. No body/radial test.
+            if(id==='bo_staff'){
+              const L=Math.max(1,Number(s.staffLength||g.length||92)),half=Math.max(2,Number(s.activeWidth||7)*.5),reach=(Number(target.radius)||26)+half+1,a=Number(p.weaponAttackAngle)||0,pa={x:prevX+Math.cos(prevRot)*L*.5,y:prevY+Math.sin(prevRot)*L*.5},pb={x:prevX-Math.cos(prevRot)*L*.5,y:prevY-Math.sin(prevRot)*L*.5},na={x:Number(g.worldX)+Math.cos(a)*L*.5,y:Number(g.worldY)+Math.sin(a)*L*.5},nb={x:Number(g.worldX)-Math.cos(a)*L*.5,y:Number(g.worldY)-Math.sin(a)*L*.5};
+              const hit=circleSegment(Number(target.x),Number(target.y),reach,pa,na)||circleSegment(Number(target.x),Number(target.y),reach,pb,nb);if(hit)hitThrown(this,p,target,g,s,id,'sweep');
+            }else{
+              const rr=Math.max(1,Number(g.discRadius||s.discRadius||17)),reach=(Number(target.radius)||26)+rr;
+              if(circleSegment(Number(target.x),Number(target.y),reach,{x:prevX,y:prevY},{x:Number(g.worldX),y:Number(g.worldY)}))hitThrown(this,p,target,g,s,id,'sweep');
+            }
+          }
+        }
+        /* Extra pattern weapons are independent thrown copies, positioned by the
+           same throw distance but with their own attack angle. */
+        const extras=projectileThrowIds.has(id)?[]:(Array.isArray(p._weaponPatternAngles)?p._weaponPatternAngles:[]);
+        if(extras.length){
+          const baseD=Math.hypot(Number(p.weaponWorldX)-Number(p.x),Number(p.weaponWorldY)-Number(p.y));
+          for(let i=0;i<extras.length;i++){
+            const ea=extras[i];
+            let eg;
+            const fake=Object.assign({},p,{weaponAttackAngle:ea,weaponOrbitAngle:ea,weaponPatternAngles:[],_weaponPatternAngles:[]});
+            if(id==='bo_staff'){
+              fake.weaponWorldX=Number(p.weaponThrowOriginX||p.x)+Math.cos(ea)*baseD;fake.weaponWorldY=Number(p.weaponThrowOriginY||p.y)+Math.sin(ea)*baseD;
+            }else{
+              fake.weaponWorldX=p.x+Math.cos(ea)*baseD;fake.weaponWorldY=p.y+Math.sin(ea)*baseD;
+            }
+            eg=this.weaponRenderGeometry(fake);if(!eg)continue;
+            for(const target of Object.values(this.players||{})){
+              if(!target||target.id===p.id||!target.alive||target.spectator)continue;
+              hitThrown(this,p,target,eg,s,id,`pattern:${i}`);
+            }
+          }
+        }
+      }
+      return undefined;
+    };
+  }
+
+  /* Prevent every legacy contact entry point from interpreting a thrown Bo/Chakram
+     as a player-centered weapon. The authoritative updater above owns both. */
+  const oldPlayerContact=Game.weaponPlayerContact?.bind(Game);
+  if(oldPlayerContact)Game.weaponPlayerContact=function(attacker,angle,inner,outer,width,kind,now){if(attacker&&thrownIds.has(valid(attacker.weapon))&&attacker.weaponPhase!=='idle')return;return oldPlayerContact(attacker,angle,inner,outer,width,kind,now);};
+  const oldActiveContact=Game.weaponActiveContact?.bind(Game);
+  if(oldActiveContact){
+    Game.weaponActiveContact=function(attacker,angle,inner,outer,width,kind){if(attacker&&thrownIds.has(valid(attacker.weapon))&&attacker.weaponPhase!=='idle')return;return oldActiveContact(attacker,angle,inner,outer,width,kind);};
+  }
+  const oldPointPath=Game.weaponPointPathContact?.bind(Game);
+  if(oldPointPath)Game.weaponPointPathContact=function(attacker,x1,y1,x2,y2,kind,bonus){if(attacker&&thrownIds.has(valid(attacker.weapon))&&attacker.weaponPhase!=='idle')return false;return oldPointPath(attacker,x1,y1,x2,y2,kind,bonus);};
+  const oldSegment=Game.weaponSegmentHit?.bind(Game);
+  if(oldSegment)Game.weaponSegmentHit=function(p,angle,inner,outer,width,target){if(p&&thrownIds.has(valid(p.weapon))&&p.weaponPhase!=='idle')return false;return oldSegment(p,angle,inner,outer,width,target);};
+
+  /* ================================================================
+     4) Pattern collision/render authority for every non-thrown weapon.
+     ================================================================ */
+  function contactPatternFlail(game,p,angle){
+    if(!game.isHost||!p?.alive)return;
+    const s=game.weaponSpec(p)||{},distance=Math.max(Number(s.idleOuter)||74,Number(p.flailCurrentDistance)||Number(s.idleOuter)||74),bx=p.x+Math.cos(angle)*distance,by=p.y+Math.sin(angle)*distance,ballR=Math.max(0,Number(s.ballRadius)||14)+Math.max(0,Number(s.activeWidth)||10)*.5,locks=p._weaponPatternFlailLocks||(p._weaponPatternFlailLocks={}),now=performance.now();
+    for(const t of Object.values(game.players||{})){
+      if(!t||t.id===p.id||!t.alive||t.spectator)continue;
+      const key=`${Math.round(angle*100000)}:${t.id}`;if(Number(locks[key]||0)>now)continue;
+      const rr=(Number(t.radius)||26)+ballR,dx=t.x-bx,dy=t.y-by;if(dx*dx+dy*dy>rr*rr)continue;
+      locks[key]=now+Math.max(.035,Number(s.contactCooldown)||.23)*1000;
+      if(game.weaponDeathEnabled?.())game.weaponEliminate(p,t,'flail',t.x,t.y);else game.weaponApplyKnockback(p,t,'flail',typeof game.weaponHitSpeed==='function'?game.weaponHitSpeed(p,'flail'):Number(s.contactKnockback)||350);
+    }
+  }
+
+  const priorActiveFinal=Game.weaponActiveContact?.bind(Game);
+  if(priorActiveFinal){
+    Game.weaponActiveContact=function(attacker,angle,inner,outer,width,kind){
+      if(attacker&&thrownIds.has(valid(attacker.weapon))&&attacker.weaponPhase!=='idle')return;
+      const extras=attacker?.weaponPhase!=='idle'&&!projectileThrowIds.has(valid(attacker?.weapon))&&Array.isArray(attacker?._weaponPatternAngles)?attacker._weaponPatternAngles.slice():[];
+      if(!attacker||!extras.length)return priorActiveFinal(attacker,angle,inner,outer,width,kind);
+      const id=valid(attacker.weapon);
+      const savedAngles=attacker._weaponPatternAngles,savedAttack=attacker.weaponAttackAngle,savedOrbit=attacker.weaponOrbitAngle,savedWX=attacker.weaponWorldX,savedWY=attacker.weaponWorldY;
+      attacker._weaponPatternAngles=[];
+      const main=priorActiveFinal(attacker,angle,inner,outer,width,kind);
+      for(const ea of extras){
+        if(id==='flail'){contactPatternFlail(this,attacker,ea);continue;}
+        attacker.weaponAttackAngle=ea;attacker.weaponOrbitAngle=ea;
+        if(id==='anchor'||id==='gyroblade'||id==='pitchfork'){
+          const dist=Math.hypot(Number(savedWX)-Number(attacker.x),Number(savedWY)-Number(attacker.y));
+          if(Number.isFinite(dist)&&dist>0){attacker.weaponWorldX=attacker.x+Math.cos(ea)*dist;attacker.weaponWorldY=attacker.y+Math.sin(ea)*dist;}
+        }
+        attacker.weaponHitIds={};
+        priorActiveFinal(attacker,ea,inner,outer,width,kind);
+      }
+      attacker._weaponPatternAngles=savedAngles;attacker.weaponAttackAngle=savedAttack;attacker.weaponOrbitAngle=savedOrbit;attacker.weaponWorldX=savedWX;attacker.weaponWorldY=savedWY;return main;
+    };
+  }
+
+  const priorRenderFinal=Game.renderWeapon?.bind(Game);
+  if(priorRenderFinal){
+    Game.renderWeapon=function(ctx,p){
+      if(!p)return priorRenderFinal(ctx,p);
+      const extras=Array.isArray(p._weaponPatternAngles)?p._weaponPatternAngles.slice():[];
+      if(!extras.length)return priorRenderFinal(ctx,p);
+      const id=valid(p.weapon);
+      if(projectileThrowIds.has(id)||p.weaponPhase==='idle'||(projectileIds.has(id)&&!meleeIds.has(id)))return priorRenderFinal(ctx,p);
+      const savedAngles=p._weaponPatternAngles,savedAttack=p.weaponAttackAngle,savedOrbit=p.weaponOrbitAngle,savedWX=p.weaponWorldX,savedWY=p.weaponWorldY;
+      p._weaponPatternAngles=[];
+      const result=priorRenderFinal(ctx,p);
+      for(const ea of extras){
+        const fake=Object.assign({},p,{weaponAttackAngle:ea,weaponOrbitAngle:ea,_weaponPatternAngles:[],weaponPatternAngles:[]});
+        if(thrownIds.has(id)){
+          const s=this.weaponSpec(p)||{},d=Math.hypot(Number(savedWX)-Number(p.x),Number(savedWY)-Number(p.y));
+          if(id==='bo_staff'){fake.weaponWorldX=Number(p.weaponThrowOriginX||p.x)+Math.cos(ea)*d;fake.weaponWorldY=Number(p.weaponThrowOriginY||p.y)+Math.sin(ea)*d;}
+          else{fake.weaponWorldX=p.x+Math.cos(ea)*d;fake.weaponWorldY=p.y+Math.sin(ea)*d;}
+        }else if(id==='anchor'||id==='gyroblade'||id==='pitchfork'){
+          const d=Math.hypot(Number(savedWX)-Number(p.x),Number(savedWY)-Number(p.y));
+          fake.weaponWorldX=p.x+Math.cos(ea)*d;fake.weaponWorldY=p.y+Math.sin(ea)*d;
+        }else if(id==='flail'){
+          const s=this.weaponSpec(p)||{},d=Math.max(Number(s.idleOuter)||74,Number(p.flailCurrentDistance)||Number(s.idleOuter)||74);
+          fake.weaponWorldX=p.x+Math.cos(ea)*d;fake.weaponWorldY=p.y+Math.sin(ea)*d;
+        }
+        ctx.save();ctx.globalAlpha=.48;priorRenderFinal(ctx,fake);ctx.restore();
+      }
+      p._weaponPatternAngles=savedAngles;p.weaponAttackAngle=savedAttack;p.weaponOrbitAngle=savedOrbit;p.weaponWorldX=savedWX;p.weaponWorldY=savedWY;return result;
+    };
+  }
+
+  /* Ensure a pattern card is not filtered out of a generated draft even when an
+     older compatibility closure tries to inspect the weapon. Our multi-set draft
+     generator above uses the full live pool, so this flag is informational only. */
+  Game.__plunkV96AllWeaponPatterns=true;
+  Game.__plunkV96AuthoritativeThrownWeapons=true;
+  Game.__plunkV96MultiSetDraft=true;
+})();
+
+</script>
+
+<script id="weapon-return-final-fix-v102">
+(function(){
+  'use strict';
+  if(typeof Game==='undefined') return;
+  const thrownIds=new Set(['bo_staff','chakram']);
+
+  /* ---------------------------------------------------------------
+     BO STAFF: restore the original automatic return sequence.
+     The final authoritative thrown updater advances the world-space position,
+     but its replacement state machine was missing the old phase transitions.
+     After reaching the throw endpoint, the staff holds briefly, then always
+     returns to the player's live orbit point without needing another input.
+  ---------------------------------------------------------------- */
+  const priorUpdate=Game.updateWeapons?.bind(Game);
+  if(priorUpdate && !Game.__weaponReturnFixV102){
+    Game.updateWeapons=function(dt){
+      priorUpdate(dt);
+      if(!this.isWeaponry?.()) return;
+      for(const p of Object.values(this.players||{})){
+        if(!p||!p.alive||p.spectator||p.weapon!=='bo_staff') continue;
+        const phase=String(p.weaponPhase||'idle');
+        const s=this.weaponSpec?.(p)||{};
+        if(phase==='extend'){
+          const extend=Number(s.attackExtend);
+          if(Number.isFinite(extend)&&extend<=0 || (Number(p.weaponPhaseTime)||0)>=Math.max(0,extend)){
+            const a=Number(p.weaponAttackAngle)||Number(p.weaponOrbitAngle)||0;
+            const end=Math.max(Number(s.throwStart)||34,Number(s.throwEnd)||224);
+            p.weaponWorldX=Number(p.weaponThrowOriginX||p.x)+Math.cos(a)*end;
+            p.weaponWorldY=Number(p.weaponThrowOriginY||p.y)+Math.sin(a)*end;
+            p.weaponPhase='hold';
+            p.weaponPhaseTime=0;
+          }
+        }else if(phase==='hold'){
+          const hold=Number(s.attackHold);
+          if(Number.isFinite(hold)&&hold<=0 || (Number(p.weaponPhaseTime)||0)>=Math.max(0,hold)){
+            const a=Number(p.weaponAttackAngle)||Number(p.weaponOrbitAngle)||0;
+            p.weaponPhase='return';
+            p.weaponPhaseTime=0;
+            p.weaponReturnX=p.x+Math.cos(a)*(Number(s.idleCenter)||58);
+            p.weaponReturnY=p.y+Math.sin(a)*(Number(s.idleCenter)||58);
+          }
+        }
+      }
+    };
+  }
+
+  /* ---------------------------------------------------------------
+     CHAKRAM: recall with the action input from any non-idle thrown phase.
+     This preserves the normal two-press behavior while also allowing an early
+     pull-back during extension/active instead of making the player wait for hold.
+  ---------------------------------------------------------------- */
+  if(typeof Game.returnChakram==='function' && !Game.__chakramRecallFixV102){
+    Game.returnChakram=function(p,fromInput=false,remoteSeq=null){
+      if(!this.isWeaponry?.()||!p||p.spectator||!p.alive||p.weapon!=='chakram')return false;
+      const phase=String(p.weaponPhase||'idle');
+      if(phase==='idle'||phase==='return')return false;
+      const spec=this.weaponSpec?.(p)||{};
+      const serial=Number(p.weaponActionSerial)||0;
+      p.weaponPhase='return';
+      p.weaponPhaseTime=0;
+      const a=Number.isFinite(Number(p.weaponAttackAngle))?Number(p.weaponAttackAngle):Number(p.weaponOrbitAngle)||0;
+      p.weaponReturnX=p.x+Math.cos(a)*(Number(spec.idleCenter)||58);
+      p.weaponReturnY=p.y+Math.sin(a)*(Number(spec.idleCenter)||58);
+      p.weaponReturnRequested=true;
+      if(this.isHost){
+        NetworkManager.broadcast({t:'weapon_return',id:p.id,serial},true);
+      }else if(fromInput){
+        p.weaponEventSeq=((p.weaponEventSeq||0)+1)&65535;
+        NetworkManager.sendToHost({t:'weapon_return',seq:p.weaponEventSeq,serial,weapon:'chakram'},true);
+      }else if(remoteSeq!=null){
+        p.lastWeaponEventSeq=remoteSeq;
+      }
+      return true;
+    };
+  }
+
+  Game.__weaponReturnFixV102=true;
+  Game.__chakramRecallFixV102=true;
+  Game.__chakramRecallInputFixV102=true;
+})();
+</script>
+
+<script id="plunk-v118-pattern-hammers">
+(() => {
+  'use strict';
+  if(typeof Game==='undefined'||typeof NetworkManager==='undefined')return;
+  const valid=p=>typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):p?.weapon;
+  const kind='pattern_hammer';
+  const all=g=>(g.weaponProjectiles||(g.weaponProjectiles=[]));
+  const start=Game.startWeaponAttack.bind(Game);
+  Game.startWeaponAttack=function(p,angle,fromInput=false,remoteSeq=null){
+    const result=start(p,angle,fromInput,remoteSeq);
+    if(!result||!p||valid(p)!=='anchor'||!this.isHost)return result;
+    const count=Math.max(0,Math.floor(Number(p.weaponUpgrades?.patternConeCount)||0));
+    const interval=Math.max(1,Math.floor(Number(p.weaponUpgrades?.patternConeInterval)||2));
+    if(!count||Number(p.weaponActionCount)%interval!==0)return result;
+    const spread=Math.max(0,Number(p.weaponUpgrades?.patternConeSpread)||.24);
+    const base=Number.isFinite(Number(p.weaponAttackAngle))?Number(p.weaponAttackAngle):Number(angle)||0;
+    const spec=this.weaponSpec(p),r=Math.max(6,Number(spec.anchorHeadRadius)||11);
+    for(let i=0;i<count;i++){
+      const off=(i%2?-1:1)*(Math.floor(i/2)+1)*spread,a=this.normalizeAngle(base+off);
+      const serial=Number(p.weaponActionSerial)*100+i+1,id=`ph:${p.id}:${serial}`;
+      if(all(this).some(q=>q.id===id))continue;
+      const d=Math.max(28,(Number(p.radius)||26)*.95),x=p.x+Math.cos(a)*d,y=p.y+Math.sin(a)*d;
+      const q={id,kind,ownerId:p.id,x,y,prevX:x,prevY:y,angle:a,rotation:a,
+        vx:Math.cos(a)*(Number(spec.anchorThrowSpeed)||700),
+        vy:Math.sin(a)*(Number(spec.anchorThrowSpeed)||700)-(Number(spec.anchorThrowLift)||360),
+        radius:r,life:4,serial,patternExtra:true};
+      all(this).push(q);NetworkManager.broadcast({t:'weapon_shot',projectile:q},true);
+    }
+    return result;
+  };
+  const hit=(game,q,target,now)=>{
+    if(!game.isHost||!target||target.id===q.ownerId||!target.alive||target.spectator)return;
+    const dx=target.x-q.x,dy=target.y-q.y,reach=(Number(target.radius)||26)+q.radius;
+    if(dx*dx+dy*dy>reach*reach)return;
+    q.locks=q.locks||{};if((q.locks[target.id]||0)>now)return;
+    q.locks[target.id]=now+180;
+    const owner=game.players?.[q.ownerId];if(!owner)return;
+    if(game.weaponDeathEnabled?.())game.weaponEliminate(owner,target,'anchor',target.x,target.y);
+    else game.weaponApplyKnockback(owner,target,'anchor',Math.hypot(q.vx,q.vy));
+  };
+  const update=Game.updateWeaponProjectiles?.bind(Game);
+  if(update)Game.updateWeaponProjectiles=function(dt){
+    const projectiles=all(this),extras=projectiles.filter(q=>q?.kind===kind);
+    if(!extras.length)return update(dt);
+    this.weaponProjectiles=projectiles.filter(q=>q?.kind!==kind);
+    let result;
+    try{result=update(dt);}finally{this.weaponProjectiles=this.weaponProjectiles.concat(extras);}
+    const kept=[],now=performance.now(),map=this.map;
+    for(const q of extras){
+      const owner=this.players?.[q.ownerId];if(!owner||!owner.alive)continue;
+      const spec=this.weaponSpec(owner),gravity=Number(spec.anchorGravity)||1850;
+      q.life-=dt;
+      const steps=Math.max(1,Math.ceil(Math.hypot(q.vx*dt,q.vy*dt)/8));
+      let removed=q.life<=0;
+      for(let j=0;j<steps&&!removed;j++){
+        q.prevX=q.x;q.prevY=q.y;const sub=dt/steps;
+        q.vy+=gravity*sub;q.x+=q.vx*sub;q.y+=q.vy*sub;
+        q.rotation=Math.atan2(q.vy,q.vx);q.angle=q.rotation;
+        if(this.isHost)for(const target of Object.values(this.players||{}))hit(this,q,target,now);
+        if(q.x<-q.radius||q.y<-q.radius||q.x>(Number(map?.width)||0)+q.radius||q.y>(Number(map?.height)||0)+q.radius){removed=true;break;}
+        for(const plat of map?.platforms||[]){
+          if(!plat||plat.phase)continue;
+          const cp=this.closestPointOnRect(q.x,q.y,plat);
+          if(Number.isFinite(Number(cp?.dist))&&Number(cp.dist)<=q.radius){removed=true;break;}
+        }
+      }
+      if(!removed)kept.push(q);
+      else if(this.isHost)NetworkManager.broadcast({t:'weapon_pattern_hammer_remove',id:q.id},true);
+    }
+    this.weaponProjectiles=this.weaponProjectiles.filter(q=>q?.kind!==kind).concat(kept);
+    return result;
+  };
+  const handle=Game.handleNetData?.bind(Game);
+  if(handle)Game.handleNetData=function(pid,data){
+    if(data?.t==='weapon_pattern_hammer_remove'){
+      this.weaponProjectiles=(this.weaponProjectiles||[]).filter(q=>q?.id!==data.id);return;
+    }
+    return handle(pid,data);
+  };
+  const render=Game.renderWeaponProjectiles?.bind(Game);
+  if(render)Game.renderWeaponProjectiles=function(ctx){
+    const extras=all(this).filter(q=>q?.kind===kind),saved=this.weaponProjectiles;
+    this.weaponProjectiles=saved.filter(q=>q?.kind!==kind);
+    let result;try{result=render(ctx);}finally{this.weaponProjectiles=saved;}
+    if(!this.isWeaponry?.()||!extras.length)return result;
+    const cam=this.camera,z=cam.zoom||1;ctx.save();ctx.scale(z,z);ctx.translate(-cam.x,-cam.y);
+    for(const q of extras){
+      const owner=this.players?.[q.ownerId];if(!owner)continue;
+      const primary=typeof hsvToCss==='function'?hsvToCss(owner.cust?.hue??200,owner.cust?.saturation??80,92):'#eee';
+      const secondary=typeof hsvToCss==='function'?hsvToCss(owner.cust?.hue2??40,owner.cust?.saturation2??60,78):'#aaa';
+      ctx.save();ctx.translate(q.x,q.y);ctx.rotate(q.rotation||q.angle||0);ctx.globalAlpha=.78;
+      if(typeof this.drawWeaponAnchor==='function')this.drawWeaponAnchor(ctx,Number(this.weaponSpec(owner).anchorLength)||68,primary,secondary,true);
+      else{ctx.fillStyle=primary;ctx.fillRect(-20,-5,40,10);ctx.fillStyle=secondary;ctx.fillRect(12,-12,12,24);}
+      ctx.restore();
+    }
+    ctx.restore();return result;
+  };
+})();
+</script>
+
+
+<script id="plunk-v119-gyro-range-nerf">
+(() => {
+  'use strict';
+  if(typeof Game==='undefined')return;
+  const valid=p=>typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):p?.weapon;
+  const previous=Game.weaponSpec?.bind(Game);
+  if(!previous)return;
+  Game.weaponSpec=function(p){
+    const spec=previous(p);
+    if(spec&&valid(p)==='gyroblade'&&Number.isFinite(Number(spec.projectileRange))){
+      // Final range is 75% of the previously balanced base, while Rogue RANGE
+      // modifiers remain proportional because they have already been applied.
+      spec.projectileRange=Math.max(0,Number(spec.projectileRange)*0.75);
+    }
+    return spec;
+  };
+})();
+</script>
+
 </body>
 </html>
