@@ -1950,7 +1950,7 @@ input[type=text]:hover,input[type=number]:hover,input[type=range]:hover,select:h
     <div class="spherebox-menu-hover"><button class="btn spherebox-main-button" type="button">SPHEREBOX</button><div class="spherebox-hover-actions"><button class="btn small" type="button" data-sphere-quick="dash">DASH EFFECTS</button><button class="btn small" type="button" data-sphere-quick="trail">TRAILS</button><button class="btn small" type="button" data-sphere-quick="hit">HIT EFFECTS</button></div></div>
     <button class="btn" data-go="settings">SETTINGS</button>
   </div>
-  <div style="margin-top:18px;color:var(--text-dim);font-size:11px;">Version 3.01 | made by phwarf</div>
+  <div style="margin-top:18px;color:var(--text-dim);font-size:11px;">Version 3.02 | made by phwarf</div>
 </div>
 
 <!-- ============ CREATE GAME ============ -->
@@ -14652,7 +14652,8 @@ window.addEventListener('DOMContentLoaded', ()=>{
     const hostWeaponMode=Game.mode==='weaponry'?normalizeWeaponMode(hostModeSelect?.dataset.weaponVariant,''): 'death';
     if(hostModeSelect && Game.mode==='weaponry') hostModeSelect.dataset.weaponVariant=hostWeaponMode;
     Storage.set('weaponChoice',validWeapon(document.getElementById('hostWeapon')?.value||Storage.get('weaponChoice','sword')));
-    Game.matchSettings={gravity:+document.getElementById('hostGravity').value,kb:+document.getElementById('hostKB').value,playerSize:Math.max(0.5,Math.min(2,+document.getElementById('hostPlayerSize').value||1)),maxPlayers:+document.getElementById('hostMaxP').value,spikewall:!!document.getElementById('hostSpikewall')?.checked,teams:!!document.getElementById('hostTeams')?.checked,smash:!!document.getElementById('hostSmash')?.checked,combo:!!document.getElementById('hostCombo')?.checked,parry:!!document.getElementById('hostParry')?.checked,shrinkray:!!document.getElementById('hostShrinkray')?.checked,growthray:!!document.getElementById('hostGrowthray')?.checked,whiplash:!!document.getElementById('hostWhiplash')?.checked,magnet:!!document.getElementById('hostMagnet')?.checked,repulsor:!!document.getElementById('hostRepulsor')?.checked,hotpotato:!!document.getElementById('hostHotPotato')?.checked,zeroGravity:!!document.getElementById('hostZeroGravity')?.checked,weaponMode:hostWeaponMode,weaponRoguelike:hostWeaponMode==='roguelike',weaponRogueDeath:hostWeaponMode==='roguelike'&&!!document.getElementById('hostRogueDeathToggle')?.classList.contains('on'),weaponLocks:normalizeWeaponLocks(Game.matchSettings),weaponLock:null};
+    Game.weaponRogueCardSets=1;
+    Game.matchSettings={weaponRogueCardSets:1,gravity:+document.getElementById('hostGravity').value,kb:+document.getElementById('hostKB').value,playerSize:Math.max(0.5,Math.min(2,+document.getElementById('hostPlayerSize').value||1)),maxPlayers:+document.getElementById('hostMaxP').value,spikewall:!!document.getElementById('hostSpikewall')?.checked,teams:!!document.getElementById('hostTeams')?.checked,smash:!!document.getElementById('hostSmash')?.checked,combo:!!document.getElementById('hostCombo')?.checked,parry:!!document.getElementById('hostParry')?.checked,shrinkray:!!document.getElementById('hostShrinkray')?.checked,growthray:!!document.getElementById('hostGrowthray')?.checked,whiplash:!!document.getElementById('hostWhiplash')?.checked,magnet:!!document.getElementById('hostMagnet')?.checked,repulsor:!!document.getElementById('hostRepulsor')?.checked,hotpotato:!!document.getElementById('hostHotPotato')?.checked,zeroGravity:!!document.getElementById('hostZeroGravity')?.checked,weaponMode:hostWeaponMode,weaponRoguelike:hostWeaponMode==='roguelike',weaponRogueDeath:hostWeaponMode==='roguelike'&&!!document.getElementById('hostRogueDeathToggle')?.classList.contains('on'),weaponLocks:normalizeWeaponLocks(Game.matchSettings),weaponLock:null};
     Game.roundConfig={mode:document.getElementById('hostRoundMode').value,count:Math.max(1,+document.getElementById('hostRoundCount').value||3),target:Math.max(1,+document.getElementById('hostPointTarget').value||3)};
     Lobby.createAsHost();
   });
@@ -20800,20 +20801,17 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 </script>
 
 
-<script id="plunk-v119-gyro-range-nerf">
+<script id="plunk-v120-gyroblade-base-range">
 (() => {
   'use strict';
   if(typeof Game==='undefined')return;
-  const valid=p=>typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):p?.weapon;
-  const previous=Game.weaponSpec?.bind(Game);
-  if(!previous)return;
+  const prior=Game.weaponSpec?.bind(Game);
+  if(!prior)return;
   Game.weaponSpec=function(p){
-    const spec=previous(p);
-    if(spec&&valid(p)==='gyroblade'&&Number.isFinite(Number(spec.projectileRange))){
-      // Final range is 75% of the previously balanced base, while Rogue RANGE
-      // modifiers remain proportional because they have already been applied.
+    const spec=prior(p);
+    const id=typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):p?.weapon;
+    if(id==='gyroblade'&&spec&&Number.isFinite(Number(spec.projectileRange)))
       spec.projectileRange=Math.max(0,Number(spec.projectileRange)*0.75);
-    }
     return spec;
   };
 })();
@@ -26092,9 +26090,10 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
     const total=Number(data?.total)||0;
     const title=document.getElementById('weaponRogueTitle');
     if(title){
+      const displayedRound=Math.max(1,(Number(data?.round)||1)-1);
       title.textContent=setCount>1
-        ? `ROUND ${Number(data?.round)||''} UPGRADE · SET ${setIndex+1}/${setCount}`
-        : `ROUND ${Number(data?.round)||''} UPGRADE`;
+        ? `ROUND ${displayedRound} UPGRADE · SET ${setIndex+1}/${setCount}`
+        : `ROUND ${displayedRound} UPGRADE`;
     }
     const sub=document.getElementById('weaponRogueSub');
     if(sub){
@@ -26854,20 +26853,17 @@ Game.__weaponryRoguelikeCondensedStatsV52=true;
 </script>
 
 
-<script id="plunk-v119-gyro-range-nerf">
+<script id="plunk-v120-gyroblade-base-range">
 (() => {
   'use strict';
   if(typeof Game==='undefined')return;
-  const valid=p=>typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):p?.weapon;
-  const previous=Game.weaponSpec?.bind(Game);
-  if(!previous)return;
+  const prior=Game.weaponSpec?.bind(Game);
+  if(!prior)return;
   Game.weaponSpec=function(p){
-    const spec=previous(p);
-    if(spec&&valid(p)==='gyroblade'&&Number.isFinite(Number(spec.projectileRange))){
-      // Final range is 75% of the previously balanced base, while Rogue RANGE
-      // modifiers remain proportional because they have already been applied.
+    const spec=prior(p);
+    const id=typeof validWeapon==='function'?validWeapon(p?.weapon||'sword'):p?.weapon;
+    if(id==='gyroblade'&&spec&&Number.isFinite(Number(spec.projectileRange)))
       spec.projectileRange=Math.max(0,Number(spec.projectileRange)*0.75);
-    }
     return spec;
   };
 })();
