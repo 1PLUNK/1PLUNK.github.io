@@ -1,3 +1,46 @@
+<!-- PASSWORD PROTECTION START -->
+<style id="secure-hide">
+  html { display: none !important; } /* Hides all content below immediately */
+</style>
+
+<div id="password-gate" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#ffffff; z-index:999999; display:flex; flex-direction:column; justify-content:center; align-items:center; font-family:sans-serif;">
+    <div style="text-align:center; padding:30px; border:1px solid #e0e0e0; border-radius:8px; background:#fefefe; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+        <h3 style="margin-top:0; color:#333;">Password Needed</h3>
+        <p style="color:#666; font-size:14px; margin-bottom:15px;">This page is password protected.</p>
+        <input type="password" id="site-pass" placeholder="Enter Password" style="padding:10px; margin-bottom:12px; width:220px; border:1px solid #ccc; border-radius:4px; font-size:16px;"><br>
+        <button onclick="verifyPass()" style="padding:10px 20px; background:#007BFF; color:white; border:none; border-radius:4px; cursor:pointer; font-size:14px; font-weight:bold; width:100%;">Enter</button>
+        <p id="fail-msg" style="color:#dc3545; display:none; margin-top:15px; font-size:14px; font-weight:bold;">Incorrect password.</p>
+    </div>
+</div>
+
+<script>
+function verifyPass() {
+    var input = document.getElementById('site-pass').value;
+    var actualPass = "sphere"; // <-- Change this to your password
+
+    if (input === actualPass) {
+        // Remove the CSS that hides the page content
+        var styleTag = document.getElementById('secure-hide');
+        if(styleTag) styleTag.remove();
+        
+        // Remove the login screen overlay
+        document.getElementById('password-gate').remove();
+    } else {
+        document.getElementById('fail-msg').style.display = 'block';
+    }
+}
+
+// Enables pressing the "Enter" key to submit
+document.addEventListener("DOMContentLoaded", function() {
+    document.getElementById('site-pass').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') { verifyPass(); }
+    });
+});
+</script>
+<!-- PASSWORD PROTECTION END -->
+
+<!-- PASTE YOUR EXISTING HTML DIRECTLY BELOW THIS LINE -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
